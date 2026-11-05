@@ -20,6 +20,7 @@ export function loadImage(url: string): Promise<HTMLImageElement | null> {
     };
     image.onerror = () => {
       entry.failed = true;
+      cache.delete(url); // allow a retry next time instead of caching the failure
       resolve(null);
     };
   });

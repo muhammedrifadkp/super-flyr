@@ -1,5 +1,5 @@
 /* Super Flyr service worker: installable app shell, offline fallback, cached images and fonts. */
-const VERSION = "sf-v1";
+const VERSION = "sf-v2";
 const STATIC_CACHE = `${VERSION}-static`;
 const IMAGE_CACHE = `${VERSION}-images`;
 const PAGE_CACHE = `${VERSION}-pages`;
@@ -47,8 +47,9 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Product photos and logos (local uploads or Cloudinary).
-  if ((url.origin === self.location.origin && url.pathname.startsWith("/api/files/")) || url.hostname === "res.cloudinary.com") {
+  // Local-mode uploads only. Cross-origin images (Cloudinary) are left to the browser: the page loads them
+  // both with and without CORS, and a cached no-cors (opaque) copy would break the poster canvas.
+  if (url.origin === self.location.origin && url.pathname.startsWith("/api/files/")) {
     event.respondWith(cacheFirst(request, IMAGE_CACHE));
     return;
   }
