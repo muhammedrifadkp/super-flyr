@@ -5,7 +5,7 @@ import { Suspense } from "react";
 import { ContactBar, PoweredBy, ProductGrid, StoreHero, groupByCategory } from "@/components/public/PublicParts";
 import { getRepo } from "@/lib/db";
 import { discountPercent, formatValidity, isExpired, resolveItems } from "@/lib/format";
-import { readableOn } from "@/lib/poster/templates";
+import { normalizeStyle, pageColor, readableOn } from "@/lib/poster/templates";
 
 async function load(slug: string) {
   await connection();
@@ -43,14 +43,15 @@ async function Offer({ params }: { params: PageProps<"/o/[slug]">["params"] }) {
   const data = await load(slug);
   if (!data) notFound();
   const { poster, store, items } = data;
-  const { style, content } = poster;
+  const { content } = poster;
+  const style = normalizeStyle(poster.style);
   const validity = formatValidity(content.validFrom, content.validTo);
   const ended = isExpired(content.validTo);
   const groups = groupByCategory(items);
 
   return (
     <div className="min-h-dvh bg-gray-50" style={{ colorScheme: "light" }}>
-      <StoreHero store={store} color={style.headerBg}>
+      <StoreHero store={store} color={pageColor(style)}>
         <div className="mx-auto max-w-5xl px-4 pb-6">
           <h1 className="text-3xl font-black uppercase tracking-tight sm:text-4xl">{content.headline || poster.title}</h1>
           {content.headlineMl ? (
@@ -94,7 +95,7 @@ async function Offer({ params }: { params: PageProps<"/o/[slug]">["params"] }) {
         {content.footerNote ? <p className="mt-6 text-center text-xs text-gray-500">{content.footerNote}</p> : null}
       </main>
 
-      <ContactBar store={store} color={style.headerBg} message={`Hi, I saw your “${content.headline || poster.title}” offers.`} />
+      <ContactBar store={store} color={pageColor(style)} message={`Hi, I saw your “${content.headline || poster.title}” offers.`} />
       <PoweredBy />
     </div>
   );

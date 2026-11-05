@@ -4,11 +4,11 @@ import { Copy, CopyPlus, Globe, ImagePlus, MoreVertical, Plus, Trash2 } from "lu
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { api, usePosters } from "@/lib/client/api";
+import { api, usePosters, useProducts, useStore } from "@/lib/client/api";
 import { formatValidity, isExpired } from "@/lib/format";
-import type { Poster } from "@/lib/types";
+import type { Poster, Product, Store } from "@/lib/types";
 import { useConfirm } from "../Confirm";
-import { MiniPoster } from "../poster/MiniPoster";
+import { PosterThumb } from "../poster/PosterThumb";
 import { useToast } from "../Toast";
 import { Button, ButtonLink, EmptyState, IconButton, PageHeader, Skeleton, cx } from "../ui";
 
@@ -16,6 +16,8 @@ const updatedFormat = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: 
 
 export function PostersScreen() {
   const { data: posters, error, isLoading, mutate } = usePosters();
+  const { data: store } = useStore();
+  const { data: products } = useProducts();
   const router = useRouter();
   const toast = useToast();
   const confirm = useConfirm();
@@ -91,6 +93,8 @@ export function PostersScreen() {
             <PosterCard
               key={poster.id}
               poster={poster}
+              store={store}
+              products={products}
               onDuplicate={() => duplicate(poster)}
               onDelete={() => remove(poster)}
               onCopyLink={async () => {
@@ -107,11 +111,15 @@ export function PostersScreen() {
 
 function PosterCard({
   poster,
+  store,
+  products,
   onDuplicate,
   onDelete,
   onCopyLink,
 }: {
   poster: Poster;
+  store?: Store;
+  products?: Product[];
   onDuplicate: () => void;
   onDelete: () => void;
   onCopyLink: () => void;
@@ -122,9 +130,7 @@ function PosterCard({
     <li className="group relative flex flex-col overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-950/5 transition-shadow hover:shadow-md">
       <Link href={`/dashboard/posters/${poster.id}`} className="block bg-gray-100 p-3">
         <span className="sr-only">Open {poster.title}</span>
-        <div className="mx-auto max-h-56 overflow-hidden rounded shadow-sm" style={{ maxWidth: "100%" }}>
-          <MiniPoster poster={poster} />
-        </div>
+        <PosterThumb poster={poster} store={store} products={products} maxHeight={224} />
       </Link>
       <div className="flex min-w-0 flex-1 items-start gap-1 p-3">
         <div className="min-w-0 flex-1">

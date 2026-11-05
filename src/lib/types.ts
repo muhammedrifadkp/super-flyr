@@ -6,6 +6,11 @@ export type FontKey =
   | "oswald"
   | "poppins"
   | "montserrat"
+  | "luckiest"
+  | "lilita"
+  | "lobster"
+  | "bree"
+  | "barlow"
   | "baloo"
   | "anek"
   | "notoMl"
@@ -13,9 +18,25 @@ export type FontKey =
 
 export type FormatKey = "square" | "portrait" | "story" | "a4" | "landscape";
 
-export type HeaderStyle = "banner" | "ribbon" | "plain";
-export type Decoration = "none" | "rays" | "leaves" | "dots" | "confetti" | "kasavu";
-export type BadgeShape = "burst" | "circle" | "tag";
+/** How the top of the poster is laid out. */
+export type HeaderStyle =
+  | "banner" // full-width colour block with curved bottom, centred title
+  | "ribbon" // centred title on a ribbon
+  | "plain" // centred title on the background
+  | "split" // colour block, title left, offer box + date + logo right
+  | "arc" // big half-circle at the top centre
+  | "blob" // large curved shape top-right, 3D title in a circle on the left
+  | "circle" // title inside a big circle on the left, store info and hero image right
+  | "stack" // huge stacked title, hero image on the left
+  | "script"; // logo in a circle left, two-colour title right
+export type Decoration = "none" | "rays" | "leaves" | "dots" | "confetti" | "kasavu" | "flowers" | "sparkles" | "swoosh";
+export type BgPattern = "none" | "wood" | "paper" | "diagonal" | "bokeh";
+export type CardStyle = "card" | "free" | "panel" | "divider";
+export type PriceStyle = "pill" | "circle" | "slant" | "flag" | "bar" | "big" | "tag";
+export type BadgeShape = "burst" | "circle" | "tag" | "corner" | "dot";
+export type FooterStyle = "band" | "split" | "strip" | "banner";
+export type StripStyle = "pill" | "bar";
+export type NameMode = "both" | "en" | "ml";
 
 export interface BrandColors {
   primary: string;
@@ -67,25 +88,53 @@ export interface PosterItem {
 }
 
 export interface PosterStyle {
+  // Background
   bgTop: string;
   bgBottom: string;
+  bgPattern: BgPattern;
+  // Header
   headerBg: string;
   headerText: string;
+  /** Colour of the main headline word(s). */
+  headlineColor: string;
   headerStyle: HeaderStyle;
+  /** 3D drop shadow behind the headline. */
+  headline3d: boolean;
+  headingItalic: boolean;
   decoration: Decoration;
   decorationColor: string;
+  /** Logo box, offer box, title circle and ribbons. */
+  panelBg: string;
+  panelText: string;
+  // Date / sub-headline strip
+  stripStyle: StripStyle;
+  stripBg: string;
+  stripText: string;
+  // Product cards
+  cardStyle: CardStyle;
   cardBg: string;
   cardRadius: number;
   cardShadow: boolean;
   nameColor: string;
+  namePosition: "below" | "above";
   mrpColor: string;
+  // Price
+  priceStyle: PriceStyle;
   priceBg: string;
   priceText: string;
+  /** Ring / second colour of the price badge. */
+  priceAccent: string;
+  // Discount badge and offer box
   badgeBg: string;
   badgeText: string;
   badgeShape: BadgeShape;
+  badgePosition: "left" | "right";
+  // Footer
+  footerStyle: FooterStyle;
   footerBg: string;
   footerText: string;
+  footerAccent: string;
+  // Fonts
   headingFont: FontKey;
   priceFont: FontKey;
   bodyFont: FontKey;
@@ -101,13 +150,28 @@ export interface PosterLayout {
   gap: number;
   /** 0.6 – 1.4, scales the product image inside its card */
   imageScale: number;
+  /** 0.7 – 1.5, scales the header height */
+  headerSize: number;
 }
 
 export interface PosterContent {
+  /** Small line above the headline, e.g. "Weekend". */
+  kicker: string;
   headline: string;
+  /** Second headline line / word, e.g. "DEALS". */
+  headline2: string;
   headlineMl: string;
   subheadline: string;
+  /** Small tilted sticker, e.g. "TODAY ONLY". */
   badgeText: string;
+  /** Offer box, e.g. "GET UP TO" + "70%". Empty value hides it. */
+  offerLabel: string;
+  offerValue: string;
+  /** Picture in the header (basket, cart, store photo). Empty = use heroEmoji. */
+  heroImageUrl: string;
+  heroEmoji: string;
+  /** Which product names to print. */
+  nameMode: NameMode;
   footerNote: string;
   /** YYYY-MM-DD or "" */
   validFrom: string;
@@ -118,6 +182,7 @@ export interface PosterContent {
   showLogo: boolean;
   showContact: boolean;
   showValidity: boolean;
+  showHero: boolean;
 }
 
 export interface Poster {

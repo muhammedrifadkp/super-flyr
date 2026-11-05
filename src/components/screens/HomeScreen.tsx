@@ -4,7 +4,7 @@ import { ArrowRight, Globe, ImagePlus, Package, Palette, Plus } from "lucide-rea
 import Link from "next/link";
 import { usePosters, useProducts, useStore } from "@/lib/client/api";
 import { discountPercent } from "@/lib/format";
-import { MiniPoster } from "../poster/MiniPoster";
+import { PosterThumb } from "../poster/PosterThumb";
 import { ButtonLink, Card, Skeleton } from "../ui";
 
 export function HomeScreen() {
@@ -100,9 +100,7 @@ export function HomeScreen() {
                   className="block overflow-hidden rounded-xl bg-white shadow-sm ring-1 ring-gray-950/5 transition-shadow hover:shadow-md"
                 >
                   <div className="bg-gray-100 p-3">
-                    <div className="mx-auto max-h-48 overflow-hidden rounded shadow-sm">
-                      <MiniPoster poster={poster} />
-                    </div>
+                    <PosterThumb poster={poster} store={store} products={products} maxHeight={192} />
                   </div>
                   <p className="truncate px-3 py-2.5 text-sm font-medium text-gray-900">{poster.title}</p>
                 </Link>

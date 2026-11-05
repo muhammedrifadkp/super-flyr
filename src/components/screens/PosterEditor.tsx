@@ -20,7 +20,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, usePoster, useProducts, useStore } from "@/lib/client/api";
 import { resolveItems, slugify } from "@/lib/format";
 import { posterGeometry } from "@/lib/poster/layout";
-import { FORMATS } from "@/lib/poster/templates";
+import { FORMATS, normalizePoster } from "@/lib/poster/templates";
 import type { Poster, PosterPatch, Product, Store } from "@/lib/types";
 import { ExportHost, type ExportRequest } from "../poster/ExportHost";
 import { ExportDialog, ShareDialog } from "../poster/EditorDialogs";
@@ -97,7 +97,7 @@ function EditorInner({
   onSaved: (poster: Poster) => void;
 }) {
   const toast = useToast();
-  const [poster, setPoster] = useState<Poster>(initial);
+  const [poster, setPoster] = useState<Poster>(() => normalizePoster(initial));
   const [tab, setTab] = useState<Tab>(readTabFromUrl);
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -113,7 +113,7 @@ function EditorInner({
   const syncHistory = useCallback(() => setHistory({ undo: past.current.length, redo: future.current.length }), []);
 
   // ----- autosave -----
-  const latest = useRef<Poster>(initial);
+  const latest = useRef<Poster>(poster);
   const timer = useRef<number | undefined>(undefined);
   const inFlight = useRef<Promise<void> | null>(null);
   const dirty = useRef(false);
@@ -352,7 +352,7 @@ function EditorInner({
             ) : tab === "layout" ? (
               <LayoutPanel poster={poster} update={update} pages={pages} />
             ) : tab === "style" ? (
-              <StylePanel poster={poster} store={store} update={update} />
+              <StylePanel poster={poster} store={store} items={items} update={update} />
             ) : (
               <TextPanel poster={poster} update={update} />
             )}

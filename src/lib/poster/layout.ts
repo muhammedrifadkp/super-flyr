@@ -1,5 +1,5 @@
 import { formatValidity } from "../format";
-import type { Poster, PosterContent, PosterLayout, Store } from "../types";
+import type { FooterStyle, HeaderStyle, Poster, PosterContent, PosterLayout, Store } from "../types";
 import { FORMATS } from "./templates";
 
 export function contactText(store: Pick<Store, "phone" | "whatsapp" | "address">): string {
@@ -8,12 +8,24 @@ export function contactText(store: Pick<Store, "phone" | "whatsapp" | "address">
     .join("   •   ");
 }
 
+/** Header layouts that draw the date (and sub-headline) inside the header instead of a strip below it. */
+export const DATE_IN_HEADER: ReadonlySet<HeaderStyle> = new Set<HeaderStyle>(["split", "arc", "blob", "circle", "script"]);
+
 /** Geometry for a poster as drawn, including how many pages its items need. */
-export function posterGeometry(poster: Pick<Poster, "layout" | "content">, store: Store, itemCount: number): PosterGeometry {
-  const { content } = poster;
+export function posterGeometry(
+  poster: Pick<Poster, "layout" | "content" | "style">,
+  store: Store,
+  itemCount: number,
+): PosterGeometry {
+  const { content, style } = poster;
   const validityText = formatValidity(content.validFrom, content.validTo);
   const hasFooter = Boolean((content.showContact && contactText(store)) || content.footerNote);
-  return computeGeometry(poster.layout, content, itemCount, { validityText, hasFooter });
+  return computeGeometry(poster.layout, content, itemCount, {
+    validityText,
+    hasFooter,
+    headerStyle: style.headerStyle,
+    footerStyle: style.footerStyle,
+  });
 }
 
 export interface Box {
@@ -42,6 +54,21 @@ export interface PosterGeometry {
 
 const HEADER_RATIO = { square: 0.235, portrait: 0.205, story: 0.17, a4: 0.175, landscape: 0.235 } as const;
 
+/** Some header designs need more room than a plain banner. */
+const HEADER_SCALE: Record<HeaderStyle, number> = {
+  banner: 1,
+  ribbon: 1,
+  plain: 0.92,
+  split: 1.2,
+  arc: 1.3,
+  blob: 1.4,
+  circle: 1.25,
+  stack: 1.35,
+  script: 1.12,
+};
+
+const FOOTER_HEIGHT: Record<FooterStyle, number> = { band: 118, split: 128, strip: 132, banner: 124 };
+
 /** Picks rows × columns that give the biggest cards for the number of products. */
 function autoGrid(count: number, area: Box, gap: number, maxPerPage: number, fixedCols: number, fixedRows: number) {
   const n = Math.max(1, Math.min(count, maxPerPage));
@@ -68,21 +95,23 @@ export function computeGeometry(
   layout: PosterLayout,
   content: PosterContent,
   itemCount: number,
-  options: { validityText: string; hasFooter: boolean },
+  options: { validityText: string; hasFooter: boolean; headerStyle: HeaderStyle; footerStyle: FooterStyle },
 ): PosterGeometry {
   const format = FORMATS[layout.format];
   const { width, height } = format;
   const u = Math.min(width, height) / 1080;
   const pad = 40 * u;
-  const headerH = height * HEADER_RATIO[layout.format];
+  const headerH = height * HEADER_RATIO[layout.format] * HEADER_SCALE[options.headerStyle] * (layout.headerSize || 1);
   const header: Box = { x: 0, y: 0, w: width, h: headerH };
 
   let cursor = headerH + 18 * u;
-  const stripText = [content.subheadline, content.showValidity ? options.validityText : ""].filter(Boolean);
+  const stripText = DATE_IN_HEADER.has(options.headerStyle)
+    ? []
+    : [content.subheadline, content.showValidity ? options.validityText : ""].filter(Boolean);
   const strip: Box | null = stripText.length ? { x: pad, y: cursor, w: width - pad * 2, h: 58 * u } : null;
   if (strip) cursor += strip.h + 18 * u;
 
-  const footerH = options.hasFooter ? (layout.format === "story" ? 150 : 118) * u : 0;
+  const footerH = options.hasFooter ? (FOOTER_HEIGHT[options.footerStyle] + (layout.format === "story" ? 30 : 0)) * u : 0;
   const footer: Box | null = options.hasFooter ? { x: 0, y: height - footerH, w: width, h: footerH } : null;
 
   const gridBottom = height - footerH - (footer ? 22 * u : pad);

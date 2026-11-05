@@ -10,7 +10,22 @@ const imageUrl = z
 const price = z.coerce.number().min(0, "Price can’t be negative").max(10_000_000);
 const day = z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, "Use YYYY-MM-DD");
 
-const fontKey = z.enum(["anton", "bebas", "oswald", "poppins", "montserrat", "baloo", "anek", "notoMl", "manjari"]);
+const fontKey = z.enum([
+  "anton",
+  "bebas",
+  "oswald",
+  "poppins",
+  "montserrat",
+  "luckiest",
+  "lilita",
+  "lobster",
+  "bree",
+  "barlow",
+  "baloo",
+  "anek",
+  "notoMl",
+  "manjari",
+]);
 
 export const storePatchSchema = z
   .object({
@@ -60,29 +75,46 @@ export const posterLayoutSchema = z.object({
   columns: z.number().int().min(0).max(8),
   rows: z.number().int().min(0).max(10),
   gap: z.number().min(0).max(80),
-  imageScale: z.number().min(0.5).max(1.5),
+  imageScale: z.number().min(0.5).max(1.6),
+  headerSize: z.number().min(0.6).max(1.6).default(1),
 });
 
 export const posterStyleSchema = z.object({
   bgTop: color,
   bgBottom: color,
+  bgPattern: z.enum(["none", "wood", "paper", "diagonal", "bokeh"]).default("none"),
   headerBg: color,
   headerText: color,
-  headerStyle: z.enum(["banner", "ribbon", "plain"]),
-  decoration: z.enum(["none", "rays", "leaves", "dots", "confetti", "kasavu"]),
+  headlineColor: color.default("#ffffff"),
+  headerStyle: z.enum(["banner", "ribbon", "plain", "split", "arc", "blob", "circle", "stack", "script"]),
+  headline3d: z.boolean().default(false),
+  headingItalic: z.boolean().default(false),
+  decoration: z.enum(["none", "rays", "leaves", "dots", "confetti", "kasavu", "flowers", "sparkles", "swoosh"]),
   decorationColor: color,
+  panelBg: color.default("#ffd400"),
+  panelText: color.default("#111827"),
+  stripStyle: z.enum(["pill", "bar"]).default("pill"),
+  stripBg: color.default("#ffffff"),
+  stripText: color.default("#1f2937"),
+  cardStyle: z.enum(["card", "free", "panel", "divider"]).default("card"),
   cardBg: color,
   cardRadius: z.number().min(0).max(60),
   cardShadow: z.boolean(),
   nameColor: color,
+  namePosition: z.enum(["below", "above"]).default("below"),
   mrpColor: color,
+  priceStyle: z.enum(["pill", "circle", "slant", "flag", "bar", "big", "tag"]).default("pill"),
   priceBg: color,
   priceText: color,
+  priceAccent: color.default("#ffd400"),
   badgeBg: color,
   badgeText: color,
-  badgeShape: z.enum(["burst", "circle", "tag"]),
+  badgeShape: z.enum(["burst", "circle", "tag", "corner", "dot"]),
+  badgePosition: z.enum(["left", "right"]).default("right"),
+  footerStyle: z.enum(["band", "split", "strip", "banner"]).default("band"),
   footerBg: color,
   footerText: color,
+  footerAccent: color.default("#ffd400"),
   headingFont: fontKey,
   priceFont: fontKey,
   bodyFont: fontKey,
@@ -90,11 +122,18 @@ export const posterStyleSchema = z.object({
 });
 
 export const posterContentSchema = z.object({
+  kicker: text(40).default(""),
   headline: text(60),
+  headline2: text(60).default(""),
   headlineMl: text(60),
   subheadline: text(100),
   badgeText: text(24),
-  footerNote: text(140),
+  offerLabel: text(24).default(""),
+  offerValue: text(12).default(""),
+  heroImageUrl: imageUrl.default(""),
+  heroEmoji: text(16).default(""),
+  nameMode: z.enum(["both", "en", "ml"]).default("both"),
+  footerNote: text(160),
   validFrom: day,
   validTo: day,
   showMrp: z.boolean(),
@@ -102,6 +141,7 @@ export const posterContentSchema = z.object({
   showLogo: z.boolean(),
   showContact: z.boolean(),
   showValidity: z.boolean(),
+  showHero: z.boolean().default(true),
 });
 
 export const posterPatchSchema = z

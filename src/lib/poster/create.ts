@@ -26,13 +26,15 @@ export function buildPoster(options: {
       .filter((p) => discountPercent(p.normalPrice, p.offerPrice) > 0)
       .sort((a, b) => discountPercent(b.normalPrice, b.offerPrice) - discountPercent(a.normalPrice, a.offerPrice));
   }
-  const items: PosterItem[] = picks.slice(0, Math.min(limit, 9)).map((p) => ({ id: randomId(8), productId: p.id }));
+  const layout = defaultLayout(format, template);
+  const wanted = layout.columns && layout.rows ? layout.columns * layout.rows : layout.columns ? layout.columns * 3 : 9;
+  const items: PosterItem[] = picks.slice(0, Math.min(limit, wanted)).map((p) => ({ id: randomId(8), productId: p.id }));
 
   return {
     title: options.title?.trim() || `${template.name} · ${titleDate.format(new Date())}`,
     templateId: template.id,
     published: false,
-    layout: defaultLayout(format),
+    layout,
     style: template.brand ? applyBrandColors(template.style, options.store.colors) : { ...template.style },
     content: defaultContent(template, today, addDays(today, Math.max(0, template.validDays - 1))),
     items,

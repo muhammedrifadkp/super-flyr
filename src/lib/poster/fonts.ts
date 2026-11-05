@@ -6,6 +6,8 @@ export interface PosterFont {
   /** Weights the font really has. Single-weight display fonts must not be faux-bolded. */
   weights: number[];
   malayalam: boolean;
+  /** Also has italic files (loaded for slanted headlines). */
+  italic?: boolean;
   /** Fallback family when the CSS variable is not available. */
   family: string;
 }
@@ -16,6 +18,11 @@ export const POSTER_FONTS: Record<FontKey, PosterFont> = {
   oswald: { label: "Oswald (condensed)", cssVar: "--pf-oswald", weights: [400, 500, 600, 700], malayalam: false, family: "Oswald" },
   poppins: { label: "Poppins (rounded)", cssVar: "--pf-poppins", weights: [400, 500, 600, 700, 800], malayalam: false, family: "Poppins" },
   montserrat: { label: "Montserrat (modern)", cssVar: "--pf-montserrat", weights: [400, 500, 600, 700, 800], malayalam: false, family: "Montserrat" },
+  luckiest: { label: "Luckiest Guy (3D cartoon)", cssVar: "--pf-luckiest", weights: [400], malayalam: false, family: "Luckiest Guy" },
+  lilita: { label: "Lilita One (chunky rounded)", cssVar: "--pf-lilita", weights: [400], malayalam: false, family: "Lilita One" },
+  lobster: { label: "Lobster (script)", cssVar: "--pf-lobster", weights: [400], malayalam: false, family: "Lobster" },
+  bree: { label: "Bree Serif (bold serif)", cssVar: "--pf-bree", weights: [400], malayalam: false, family: "Bree Serif" },
+  barlow: { label: "Barlow Condensed (sporty)", cssVar: "--pf-barlow", weights: [500, 600, 700, 800, 900], malayalam: false, italic: true, family: "Barlow Condensed" },
   baloo: { label: "Baloo Chettan 2 (മലയാളം bold)", cssVar: "--pf-baloo", weights: [400, 500, 600, 700, 800], malayalam: true, family: "Baloo Chettan 2" },
   anek: { label: "Anek Malayalam (മലയാളം modern)", cssVar: "--pf-anek", weights: [400, 500, 600, 700, 800], malayalam: true, family: "Anek Malayalam" },
   notoMl: { label: "Noto Sans Malayalam (മലയാളം clean)", cssVar: "--pf-notoMl", weights: [400, 500, 600, 700, 800], malayalam: true, family: "Noto Sans Malayalam" },
@@ -64,6 +71,7 @@ export async function loadPosterFonts(keys: FontKey[]): Promise<void> {
     const family = fontFamily(key);
     for (const weight of POSTER_FONTS[key].weights) {
       loads.push(document.fonts.load(`${weight} 40px ${family}`, SAMPLE).catch(() => undefined));
+      if (POSTER_FONTS[key].italic) loads.push(document.fonts.load(`italic ${weight} 40px ${family}`, SAMPLE).catch(() => undefined));
     }
   }
   await Promise.all(loads);

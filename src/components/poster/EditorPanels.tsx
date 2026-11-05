@@ -4,8 +4,11 @@ import { ArrowDown, ArrowUp, Check, ChevronDown, Package, Palette, Plus, RotateC
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { discountPercent, formatPrice, randomId } from "@/lib/format";
 import { LATIN_FONT_KEYS, MALAYALAM_FONT_KEYS, POSTER_FONTS } from "@/lib/poster/fonts";
-import { FORMATS, TEMPLATES, applyBrandColors } from "@/lib/poster/templates";
+import { api } from "@/lib/client/api";
+import { BASE_CONTENT, FORMATS, TEMPLATES, TEMPLATE_CATEGORIES, applyBrandColors, defaultLayout, isTransparent, type TemplateCategory } from "@/lib/poster/templates";
+import { FittedPoster } from "./PosterPreview";
 import type { FontKey, FormatKey, Poster, PosterItem, PosterStyle, Product, ResolvedItem, Store } from "@/lib/types";
+import { ImageUploader, type PendingImage } from "../ImageUploader";
 import { Button, ColorInput, Field, IconButton, Input, Select, Switch, Textarea, cx } from "../ui";
 
 type Update = (patch: Partial<Poster>) => void;
@@ -435,6 +438,15 @@ export function LayoutPanel({ poster, update, pages }: { poster: Poster; update:
           display={`${Math.round(layout.imageScale * 100)}%`}
           onChange={(imageScale) => setLayout({ imageScale })}
         />
+        <Slider
+          label="Header height"
+          min={0.7}
+          max={1.5}
+          step={0.05}
+          value={layout.headerSize}
+          display={`${Math.round(layout.headerSize * 100)}%`}
+          onChange={(headerSize) => setLayout({ headerSize })}
+        />
       </Section>
       <Section title="Cards">
         <Slider label="Corner roundness" min={0} max={48} value={style.cardRadius} onChange={(cardRadius) => setStyle({ cardRadius })} />
@@ -446,114 +458,299 @@ export function LayoutPanel({ poster, update, pages }: { poster: Poster; update:
 
 // ---------------- Style ----------------
 
-const COLOR_FIELDS: Array<{ key: keyof PosterStyle; label: string }> = [
-  { key: "bgTop", label: "Background top" },
-  { key: "bgBottom", label: "Background bottom" },
-  { key: "headerBg", label: "Header" },
-  { key: "headerText", label: "Header text" },
-  { key: "cardBg", label: "Card" },
-  { key: "nameColor", label: "Product name" },
-  { key: "priceBg", label: "Price box" },
-  { key: "priceText", label: "Price text" },
-  { key: "mrpColor", label: "MRP text" },
-  { key: "badgeBg", label: "Badge" },
-  { key: "badgeText", label: "Badge text" },
-  { key: "footerBg", label: "Footer" },
-  { key: "footerText", label: "Footer text" },
-  { key: "decorationColor", label: "Decoration" },
+function Choice<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  className,
+}: {
+  label: string;
+  value: T;
+  options: Array<[T, string]>;
+  onChange: (value: T) => void;
+  className?: string;
+}) {
+  return (
+    <Field label={label} className={className}>
+      {(p) => (
+        <Select {...p} value={value} onChange={(e) => onChange(e.target.value as T)}>
+          {options.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </Select>
+      )}
+    </Field>
+  );
+}
+
+const HEADER_OPTIONS: Array<[PosterStyle["headerStyle"], string]> = [
+  ["banner", "Banner (curved block)"],
+  ["split", "Split block + offer box"],
+  ["arc", "Half circle"],
+  ["blob", "Big curve + title circle"],
+  ["circle", "Title circle + store info"],
+  ["stack", "Big stacked title"],
+  ["script", "Logo circle + script title"],
+  ["ribbon", "Ribbon"],
+  ["plain", "Plain"],
 ];
 
-export function StylePanel({ poster, store, update }: { poster: Poster; store: Store; update: Update }) {
+const COLOR_GROUPS: Array<{ title: string; fields: Array<{ key: keyof PosterStyle; label: string }> }> = [
+  {
+    title: "Background",
+    fields: [
+      { key: "bgTop", label: "Top" },
+      { key: "bgBottom", label: "Bottom" },
+      { key: "decorationColor", label: "Decoration" },
+    ],
+  },
+  {
+    title: "Header",
+    fields: [
+      { key: "headerBg", label: "Header" },
+      { key: "headlineColor", label: "Main headline" },
+      { key: "headerText", label: "Other header text" },
+      { key: "panelBg", label: "Logo / offer box / circle" },
+      { key: "panelText", label: "Text on that box" },
+    ],
+  },
+  {
+    title: "Date strip",
+    fields: [
+      { key: "stripBg", label: "Strip" },
+      { key: "stripText", label: "Strip text" },
+    ],
+  },
+  {
+    title: "Products",
+    fields: [
+      { key: "cardBg", label: "Card" },
+      { key: "nameColor", label: "Product name" },
+      { key: "mrpColor", label: "MRP text" },
+      { key: "priceBg", label: "Price" },
+      { key: "priceText", label: "Price text" },
+      { key: "priceAccent", label: "Price ring / name bar" },
+      { key: "badgeBg", label: "Discount badge" },
+      { key: "badgeText", label: "Discount text" },
+    ],
+  },
+  {
+    title: "Footer",
+    fields: [
+      { key: "footerBg", label: "Footer" },
+      { key: "footerText", label: "Footer text" },
+      { key: "footerAccent", label: "Icons / strip" },
+    ],
+  },
+];
+
+export function StylePanel({ poster, store, items, update }: { poster: Poster; store: Store; items: ResolvedItem[]; update: Update }) {
   const { style } = poster;
   const setStyle = (patch: Partial<PosterStyle>) => update({ style: { ...style, ...patch } });
+  const [matchTexts, setMatchTexts] = useState(true);
+  const [category, setCategory] = useState<TemplateCategory | "all">("all");
+  const templates = TEMPLATES.filter((t) => category === "all" || t.category === category);
+
+  function applyTemplate(t: (typeof TEMPLATES)[number]) {
+    const next = t.brand ? applyBrandColors(t.style, store.colors) : t.style;
+    const patch: Partial<Poster> = { templateId: t.id, style: { ...next } };
+    if (matchTexts) {
+      patch.content = {
+        ...poster.content,
+        ...t.content,
+        footerNote: t.content.footerNote ?? BASE_CONTENT.footerNote,
+        showDiscount: t.content.showDiscount ?? true,
+        showMrp: t.content.showMrp ?? true,
+      };
+      patch.layout = { ...poster.layout, columns: 0, rows: 0, imageScale: 1, ...t.layout, format: poster.layout.format };
+    }
+    update(patch);
+  }
 
   return (
     <div>
       <Section title="Template">
+        <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1" role="group" aria-label="Template type">
+          {[{ id: "all" as const, label: "All" }, ...TEMPLATE_CATEGORIES].map((cat) => (
+            <button
+              key={cat.id}
+              type="button"
+              aria-pressed={category === cat.id}
+              onClick={() => setCategory(cat.id)}
+              className={cx(
+                "h-8 shrink-0 rounded-full px-3 text-xs font-medium ring-1 transition-colors",
+                category === cat.id ? "bg-gray-900 text-white ring-gray-900" : "bg-white text-gray-700 ring-gray-300 hover:ring-gray-400",
+              )}
+            >
+              {cat.label}
+            </button>
+          ))}
+        </div>
         <div className="grid grid-cols-2 gap-2">
-          {TEMPLATES.map((t) => {
-            const s = t.brand ? applyBrandColors(t.style, store.colors) : t.style;
+          {templates.map((t) => {
             const active = poster.templateId === t.id;
             return (
               <button
                 key={t.id}
                 type="button"
                 aria-pressed={active}
-                onClick={() =>
-                  update({
-                    templateId: t.id,
-                    // Keep the user's layout choices; take the template's look.
-                    style: { ...s, cardRadius: style.cardRadius, cardShadow: s.cardShadow },
-                  })
-                }
+                onClick={() => applyTemplate(t)}
                 className={cx(
                   "overflow-hidden rounded-lg text-left ring-1 transition-shadow",
                   active ? "ring-2 ring-brand-600" : "ring-gray-200 hover:ring-gray-300",
                 )}
               >
-                <span className="block h-14" style={{ background: `linear-gradient(${s.bgTop}, ${s.bgBottom})` }} aria-hidden="true">
-                  <span className="block h-5" style={{ background: s.headerBg }} />
-                  <span className="mx-auto mt-1.5 flex w-3/4 gap-1">
-                    <span className="h-5 flex-1 rounded-sm bg-white" />
-                    <span className="h-5 flex-1 rounded-sm bg-white" />
-                    <span className="h-5 flex-1 rounded-sm" style={{ background: s.priceBg }} />
-                  </span>
+                <span className="block bg-gray-100 p-1.5" aria-hidden="true">
+                  <TemplateThumb template={t} store={store} items={items} format={poster.layout.format} />
                 </span>
                 <span className="block truncate px-2 py-1.5 text-xs font-medium text-gray-900">{t.name}</span>
               </button>
             );
           })}
         </div>
-        <Button
-          size="sm"
-          className="w-full"
-          icon={<Palette className="size-4" />}
-          onClick={() => update({ style: applyBrandColors(style, store.colors) })}
-        >
+        <Switch checked={matchTexts} onChange={setMatchTexts} label="Also use the template’s texts & grid" description="Turn off to keep your headline and layout." />
+        <Button size="sm" className="w-full" icon={<Palette className="size-4" />} onClick={() => update({ style: applyBrandColors(style, store.colors) })}>
           Use my brand colours
         </Button>
       </Section>
-      <Section title="Shapes">
+
+      <Section title="Header">
+        <Choice label="Header layout" value={style.headerStyle} options={HEADER_OPTIONS} onChange={(headerStyle) => setStyle({ headerStyle })} />
         <div className="grid grid-cols-2 gap-3">
-          <Field label="Header style">
-            {(p) => (
-              <Select {...p} value={style.headerStyle} onChange={(e) => setStyle({ headerStyle: e.target.value as PosterStyle["headerStyle"] })}>
-                <option value="banner">Banner</option>
-                <option value="ribbon">Ribbon</option>
-                <option value="plain">Plain</option>
-              </Select>
-            )}
-          </Field>
-          <Field label="Discount badge">
-            {(p) => (
-              <Select {...p} value={style.badgeShape} onChange={(e) => setStyle({ badgeShape: e.target.value as PosterStyle["badgeShape"] })}>
-                <option value="burst">Star burst</option>
-                <option value="circle">Circle</option>
-                <option value="tag">Tag</option>
-              </Select>
-            )}
-          </Field>
-          <Field label="Decoration" className="col-span-2">
-            {(p) => (
-              <Select {...p} value={style.decoration} onChange={(e) => setStyle({ decoration: e.target.value as PosterStyle["decoration"] })}>
-                <option value="none">None</option>
-                <option value="rays">Sun rays (banner header)</option>
-                <option value="leaves">Leaves</option>
-                <option value="dots">Dots</option>
-                <option value="confetti">Confetti</option>
-                <option value="kasavu">Kasavu gold border</option>
-              </Select>
-            )}
-          </Field>
+          <Choice
+            label="Background texture"
+            value={style.bgPattern}
+            options={[
+              ["none", "None"],
+              ["wood", "Wood planks"],
+              ["paper", "Paper"],
+              ["bokeh", "Soft light"],
+              ["diagonal", "Lines (split header)"],
+            ]}
+            onChange={(bgPattern) => setStyle({ bgPattern })}
+          />
+          <Choice
+            label="Decoration"
+            value={style.decoration}
+            options={[
+              ["none", "None"],
+              ["rays", "Sun rays (banner)"],
+              ["leaves", "Leaves"],
+              ["flowers", "Onam flowers"],
+              ["sparkles", "Sparkles"],
+              ["swoosh", "Green swoosh"],
+              ["dots", "Dots"],
+              ["confetti", "Confetti"],
+              ["kasavu", "Kasavu gold border"],
+            ]}
+            onChange={(decoration) => setStyle({ decoration })}
+          />
+        </div>
+        <Switch checked={style.headline3d} onChange={(headline3d) => setStyle({ headline3d })} label="3D headline" description="Outline and drop shadow" />
+        <Switch checked={style.headingItalic} onChange={(headingItalic) => setStyle({ headingItalic })} label="Slanted headline" />
+        <Choice
+          label="Date strip"
+          value={style.stripStyle}
+          options={[
+            ["pill", "Rounded pill"],
+            ["bar", "Solid bar"],
+          ]}
+          onChange={(stripStyle) => setStyle({ stripStyle })}
+        />
+      </Section>
+
+      <Section title="Products">
+        <div className="grid grid-cols-2 gap-3">
+          <Choice
+            label="Card"
+            value={style.cardStyle}
+            options={[
+              ["card", "White card"],
+              ["panel", "See-through panel"],
+              ["free", "No card"],
+              ["divider", "Lines between"],
+            ]}
+            onChange={(cardStyle) => setStyle({ cardStyle })}
+          />
+          <Choice
+            label="Price"
+            value={style.priceStyle}
+            options={[
+              ["pill", "Wide pill"],
+              ["tag", "Tag + name left"],
+              ["big", "Big number"],
+              ["circle", "Round badge"],
+              ["slant", "Slanted tag"],
+              ["flag", "Arrow flag"],
+              ["bar", "Box + name bar"],
+            ]}
+            onChange={(priceStyle) => setStyle({ priceStyle })}
+          />
+          <Choice
+            label="Discount badge"
+            value={style.badgeShape}
+            options={[
+              ["burst", "Star burst"],
+              ["circle", "Circle"],
+              ["tag", "Tag"],
+              ["corner", "Corner tab"],
+              ["dot", "Small dot"],
+            ]}
+            onChange={(badgeShape) => setStyle({ badgeShape })}
+          />
+          <Choice
+            label="Badge side"
+            value={style.badgePosition}
+            options={[
+              ["right", "Right"],
+              ["left", "Left"],
+            ]}
+            onChange={(badgePosition) => setStyle({ badgePosition })}
+          />
+          <Choice
+            label="Name position"
+            value={style.namePosition}
+            options={[
+              ["below", "Below picture"],
+              ["above", "Above picture"],
+            ]}
+            onChange={(namePosition) => setStyle({ namePosition })}
+            className="col-span-2"
+          />
         </div>
       </Section>
+
+      <Section title="Footer">
+        <Choice
+          label="Footer layout"
+          value={style.footerStyle}
+          options={[
+            ["band", "Simple band"],
+            ["split", "Icons: phone, WhatsApp, address"],
+            ["strip", "Logo + slanted note strip"],
+            ["banner", "Rounded banner"],
+          ]}
+          onChange={(footerStyle) => setStyle({ footerStyle })}
+        />
+      </Section>
+
       <Section title="Colours">
-        <div className="grid gap-2.5">
-          {COLOR_FIELDS.map(({ key, label }) => (
-            <ColorInput key={key} label={label} value={String(style[key])} onChange={(v) => setStyle({ [key]: v } as Partial<PosterStyle>)} />
+        <div className="space-y-4">
+          {COLOR_GROUPS.map((group) => (
+            <div key={group.title} className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{group.title}</p>
+              {group.fields.map(({ key, label }) => (
+                <ColorInput key={key} label={label} value={String(style[key])} onChange={(v) => setStyle({ [key]: v } as Partial<PosterStyle>)} />
+              ))}
+            </div>
           ))}
+          {isTransparent(style.headerBg) ? <p className="text-xs text-gray-500">Header colour is see-through in this template. Pick a colour to add a header panel.</p> : null}
         </div>
       </Section>
+
       <Section title="Fonts">
         <FontSelect label="Headline" value={style.headingFont} options={LATIN_FONT_KEYS} onChange={(headingFont) => setStyle({ headingFont })} />
         <FontSelect label="Price" value={style.priceFont} options={LATIN_FONT_KEYS} onChange={(priceFont) => setStyle({ priceFont })} />
@@ -582,14 +779,45 @@ function FontSelect({ label, value, options, onChange }: { label: string; value:
 
 // ---------------- Text ----------------
 
+const HERO_EMOJI = ["🛒", "🧺", "🛍️", "🥦", "🍎", "🍉", "🥭", "🌼", "🪔", "🎉", "🐟", "🍗"];
+
 export function TextPanel({ poster, update }: { poster: Poster; update: Update }) {
   const { content } = poster;
   const set = (patch: Partial<Poster["content"]>) => update({ content: { ...content, ...patch } });
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [heroKey, setHeroKey] = useState(0);
+
+  async function uploadHero(image: PendingImage | null | "remove") {
+    if (image === null) return;
+    if (image === "remove") {
+      set({ heroImageUrl: "" });
+      return;
+    }
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const url = await api.upload(image.blob, "header");
+      set({ heroImageUrl: url });
+      setHeroKey((k) => k + 1);
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "Upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  }
+
   return (
     <div>
       <Section title="Headline">
+        <Field label="Small line above" hint="e.g. Weekend, Today only">
+          {(p) => <Input {...p} value={content.kicker} onChange={(e) => set({ kicker: e.target.value })} placeholder="e.g. Weekend…" maxLength={40} />}
+        </Field>
         <Field label="Headline">
-          {(p) => <Input {...p} value={content.headline} onChange={(e) => set({ headline: e.target.value })} placeholder="e.g. TODAY'S OFFERS…" maxLength={60} />}
+          {(p) => <Input {...p} value={content.headline} onChange={(e) => set({ headline: e.target.value })} placeholder="e.g. BIG DEALS…" maxLength={60} />}
+        </Field>
+        <Field label="Second headline word / line" hint="Shown in the second colour, e.g. DEALS">
+          {(p) => <Input {...p} value={content.headline2} onChange={(e) => set({ headline2: e.target.value })} placeholder="e.g. DEALS…" maxLength={60} />}
         </Field>
         <Field label="Malayalam headline">
           {(p) => (
@@ -604,13 +832,57 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
             />
           )}
         </Field>
-        <Field label="Sub-headline">
+        <Field label="Sub-headline" hint="Branch name, days or a short promise">
           {(p) => <Input {...p} value={content.subheadline} onChange={(e) => set({ subheadline: e.target.value })} placeholder="e.g. Best prices in town…" maxLength={100} />}
         </Field>
-        <Field label="Sticker text" hint="Small tilted label at the top right. Leave empty to hide.">
+        <Field label="Sticker text" hint="Small tilted label. Leave empty to hide.">
           {(p) => <Input {...p} value={content.badgeText} onChange={(e) => set({ badgeText: e.target.value })} placeholder="e.g. TODAY ONLY…" maxLength={24} />}
         </Field>
       </Section>
+
+      <Section title="Offer box">
+        <p className="text-xs text-gray-600">Shown in the “Split block” header. Leave the value empty to hide it.</p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Label">
+            {(p) => <Input {...p} value={content.offerLabel} onChange={(e) => set({ offerLabel: e.target.value })} placeholder="e.g. GET UP TO…" maxLength={24} />}
+          </Field>
+          <Field label="Value">
+            {(p) => <Input {...p} value={content.offerValue} onChange={(e) => set({ offerValue: e.target.value })} placeholder="e.g. 70%…" maxLength={12} />}
+          </Field>
+        </div>
+      </Section>
+
+      <Section title="Header picture">
+        <Switch checked={content.showHero} onChange={(showHero) => set({ showHero })} label="Show header picture" description="Used by the circle, stacked and split headers" />
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Quick pictures">
+          {HERO_EMOJI.map((emoji) => (
+            <button
+              key={emoji}
+              type="button"
+              aria-pressed={!content.heroImageUrl && content.heroEmoji === emoji}
+              onClick={() => set({ heroEmoji: emoji, heroImageUrl: "" })}
+              className={cx(
+                "flex size-10 items-center justify-center rounded-lg text-xl ring-1",
+                !content.heroImageUrl && content.heroEmoji === emoji ? "bg-brand-50 ring-2 ring-brand-600" : "bg-white ring-gray-200 hover:ring-gray-300",
+              )}
+            >
+              <span aria-hidden="true">{emoji}</span>
+              <span className="sr-only">Use {emoji}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => set({ heroEmoji: "", heroImageUrl: "" })}
+            className="h-10 rounded-lg px-3 text-xs font-medium text-gray-700 ring-1 ring-gray-200 hover:ring-gray-300"
+          >
+            None
+          </button>
+        </div>
+        <ImageUploader key={heroKey} label="Or upload your own (basket, store photo, Maveli…)" currentUrl={content.heroImageUrl} onChange={uploadHero} />
+        {uploading ? <p className="text-xs text-gray-600" aria-live="polite">Uploading…</p> : null}
+        {uploadError ? <p className="text-xs text-red-600" aria-live="polite">{uploadError}</p> : null}
+      </Section>
+
       <Section title="Offer dates">
         <div className="grid grid-cols-2 gap-3">
           <Field label="From">
@@ -622,6 +894,34 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
         </div>
         <Switch checked={content.showValidity} onChange={(showValidity) => set({ showValidity })} label="Show dates on poster" />
       </Section>
+
+      <Section title="Product names">
+        <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Product names">
+          {(
+            [
+              ["both", "English + മലയാളം"],
+              ["en", "English"],
+              ["ml", "മലയാളം"],
+            ] as const
+          ).map(([mode, label]) => (
+            <button
+              key={mode}
+              type="button"
+              role="radio"
+              aria-checked={content.nameMode === mode}
+              onClick={() => set({ nameMode: mode })}
+              className={cx(
+                "min-h-10 rounded-lg px-2 py-1.5 text-xs font-medium ring-1",
+                content.nameMode === mode ? "bg-brand-50 text-brand-800 ring-2 ring-brand-600" : "bg-white text-gray-700 ring-gray-200 hover:ring-gray-300",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-gray-500">Products without a Malayalam name show the English name.</p>
+      </Section>
+
       <Section title="Footer">
         <Field label="Footer note">
           {(p) => (
@@ -631,12 +931,13 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
               value={content.footerNote}
               onChange={(e) => set({ footerNote: e.target.value })}
               placeholder="e.g. Offer valid while stocks last…"
-              maxLength={140}
+              maxLength={160}
             />
           )}
         </Field>
         <Switch checked={content.showContact} onChange={(showContact) => set({ showContact })} label="Show phone & address" description="From Branding settings" />
       </Section>
+
       <Section title="Show on cards">
         <Switch checked={content.showMrp} onChange={(showMrp) => set({ showMrp })} label="MRP (struck through)" />
         <Switch checked={content.showDiscount} onChange={(showDiscount) => set({ showDiscount })} label="Discount % badge" />
@@ -644,4 +945,29 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
       </Section>
     </div>
   );
+}
+
+/** Real mini render of a template with the poster's own products. */
+function TemplateThumb({
+  template,
+  store,
+  items,
+  format,
+}: {
+  template: (typeof TEMPLATES)[number];
+  store: Store;
+  items: ResolvedItem[];
+  format: FormatKey;
+}) {
+  const poster = useMemo(
+    () => ({
+      id: template.id,
+      layout: defaultLayout(format, template),
+      style: template.brand ? applyBrandColors(template.style, store.colors) : template.style,
+      content: { ...BASE_CONTENT, ...template.content, validFrom: "", validTo: "" },
+    }),
+    [template, format, store.colors],
+  );
+  const sample = useMemo(() => items.slice(0, 6), [items]);
+  return <FittedPoster poster={poster} store={store} items={sample} page={0} maxHeight={170} />;
 }

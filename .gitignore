@@ -47,3 +47,6 @@ next-env.d.ts
 
 # Claude Code local settings
 .claude/
+
+# Reference flyers from other stores (design inspiration only, not for publishing)
+public/poster-designs/

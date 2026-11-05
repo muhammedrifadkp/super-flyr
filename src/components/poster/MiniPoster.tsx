@@ -1,11 +1,12 @@
-import { FORMATS } from "@/lib/poster/templates";
+import { FORMATS, isTransparent, normalizeStyle, pageColor } from "@/lib/poster/templates";
 import type { Poster } from "@/lib/types";
 
 /** Lightweight CSS thumbnail for lists (no canvas). */
 export function MiniPoster({ poster }: { poster: Pick<Poster, "style" | "content" | "layout" | "items"> }) {
-  const { style, content, layout } = poster;
+  const { content, layout } = poster;
+  const style = normalizeStyle(poster.style);
   const format = FORMATS[layout.format];
-  const banner = style.headerStyle === "banner";
+  const banner = style.headerStyle !== "plain" && !isTransparent(style.headerBg) && style.headerBg.toLowerCase() !== style.bgTop.toLowerCase();
   const cards = Math.min(6, Math.max(3, poster.items.length));
   return (
     <div
@@ -14,11 +15,11 @@ export function MiniPoster({ poster }: { poster: Pick<Poster, "style" | "content
       aria-hidden="true"
     >
       <div className="px-2 pb-2 pt-2 text-center" style={{ background: banner ? style.headerBg : "transparent" }}>
-        <p className="truncate text-[11px] font-black uppercase leading-tight" style={{ color: banner ? style.headerText : style.headerBg }}>
-          {content.headline || "Offers"}
+        <p className="truncate text-[11px] font-black uppercase leading-tight" style={{ color: banner ? style.headlineColor : pageColor(style) }}>
+          {content.headline || content.headlineMl || "Offers"}
         </p>
         {content.headlineMl ? (
-          <p className="truncate font-ml text-[9px] font-bold leading-tight" style={{ color: banner ? style.headerText : style.headerBg }}>
+          <p className="truncate font-ml text-[9px] font-bold leading-tight" style={{ color: banner ? style.headerText : pageColor(style) }}>
             {content.headlineMl}
           </p>
         ) : null}

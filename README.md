@@ -11,7 +11,8 @@ Each client gets **their own deployment** (own Vercel project, URL, MongoDB data
 | Store branding | Name, tagline, logo, 3 brand colours, phone, WhatsApp, address, Maps link (`/dashboard/settings`) |
 | Products | Name, Malayalam name, category, unit, MRP, offer price, photo. Quick inline price edits. One-click demo catalogue |
 | Free background removal | In-browser flood-fill removal for white/plain backgrounds, strength slider, auto-crop. No paid API |
-| Templates | Daily Deals, Fresh Vegetables, Fruit Fiesta, Weekly Mega Sale, Festival (kasavu), Brand Classic. Category templates auto-add products |
+| Templates | 13 designs in 7 groups: Weekend Big Deals, Fresh Deals Grid, Fresh Market (Wood), Green Fresh Deals, Leafy Fresh Deal, Fresh Deals (Paper), Fresh Market Days, Weekend Fresh Sale (Malayalam), Onam Chantha, Special Offers, Daily Deals, Kasavu Festival, Brand Classic. Category templates auto-add products |
+| Design system | Every part is editable: 9 header layouts, 4 card styles, 7 price styles, 5 discount badges, 4 footers, textures (wood, paper, soft light, lines), decorations (Onam flowers, leaves, sparkles, swoosh, rays, kasavu), 3D or slanted headlines, header picture (upload or emoji), offer box, English / Malayalam / both product names, every colour and font |
 | Poster editor | React Konva canvas. Sizes: portrait, square, story, A4 print, TV screen. Rows/columns (or auto), spacing, image size, colours, header/badge styles, decorations, fonts (Latin and Malayalam), texts, dates, per-poster price overrides, undo/redo, autosave, multi-page |
 | Export | PNG / JPG (1×, 2×, print quality), multi-page PDF, direct print, native share sheet (WhatsApp, Instagram) |
 | Public offer link | `/o/<slug>` page with Call / WhatsApp / Directions buttons and a WhatsApp link preview image. `/` lists every live offer |

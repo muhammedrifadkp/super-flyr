@@ -3,10 +3,10 @@
 import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api, useProducts, useStore } from "@/lib/client/api";
 import { addDays, discountPercent, todayIst } from "@/lib/format";
-import { FORMATS, TEMPLATES, applyBrandColors, defaultContent, defaultLayout } from "@/lib/poster/templates";
+import { FORMATS, TEMPLATES, TEMPLATE_CATEGORIES, applyBrandColors, defaultContent, defaultLayout, type TemplateCategory } from "@/lib/poster/templates";
 import type { FormatKey, Poster, Product, ResolvedItem } from "@/lib/types";
 import { FittedPoster } from "../poster/PosterPreview";
 import { useToast } from "../Toast";
@@ -41,25 +41,28 @@ export function NewPosterScreen() {
   const { data: store } = useStore();
   const { data: products } = useProducts();
   const [format, setFormat] = useState<FormatKey>("portrait");
+  const [category, setCategory] = useState<TemplateCategory | "all">("all");
   const [creating, setCreating] = useState<string | null>(null);
+  // Cache Components keeps this page mounted but hidden after navigating to the editor: clear the spinner then.
+  useEffect(() => () => setCreating(null), []);
 
   const previews = useMemo(() => {
     if (!store) return [];
     const today = todayIst();
-    return TEMPLATES.map((t) => {
+    return TEMPLATES.filter((t) => category === "all" || t.category === category).map((t) => {
       let picks = (products ?? []).filter((p) => (t.autoCategory ? p.category === t.autoCategory : discountPercent(p.normalPrice, p.offerPrice) > 0));
       if (!picks.length) picks = products ?? [];
       const items = picks.length ? picks.slice(0, 6).map(toResolved) : SAMPLE;
       const poster: Pick<Poster, "id" | "layout" | "style" | "content"> = {
         id: t.id,
-        layout: defaultLayout(format),
+        layout: defaultLayout(format, t),
         style: t.brand ? applyBrandColors(t.style, store.colors) : t.style,
         content: defaultContent(t, today, addDays(today, t.validDays - 1)),
       };
       const count = t.autoCategory ? (products ?? []).filter((p) => p.category === t.autoCategory).length : 0;
       return { template: t, poster, items, count };
     });
-  }, [store, products, format]);
+  }, [store, products, format, category]);
 
   async function create(templateId: string) {
     setCreating(templateId);
@@ -97,6 +100,28 @@ export function NewPosterScreen() {
             <span className={cx("ml-1.5 text-xs", format === key ? "text-gray-300" : "text-gray-500")}>{FORMATS[key].hint}</span>
           </button>
         ))}
+      </div>
+
+      <div className="-mx-4 mt-3 flex gap-2 overflow-x-auto px-4 pb-1" role="group" aria-label="Template type">
+        {[{ id: "all" as const, label: "All templates" }, ...TEMPLATE_CATEGORIES].map((cat) => {
+          const count = cat.id === "all" ? TEMPLATES.length : TEMPLATES.filter((t) => t.category === cat.id).length;
+          if (!count) return null;
+          return (
+            <button
+              key={cat.id}
+              type="button"
+              aria-pressed={category === cat.id}
+              onClick={() => setCategory(cat.id)}
+              className={cx(
+                "h-9 shrink-0 rounded-full px-3.5 text-sm font-medium ring-1 transition-colors",
+                category === cat.id ? "bg-brand-600 text-white ring-brand-600" : "bg-white text-gray-700 ring-gray-300 hover:ring-gray-400",
+              )}
+            >
+              {cat.label}
+              <span className={cx("ml-1.5 tabular text-xs", category === cat.id ? "text-brand-100" : "text-gray-500")}>{count}</span>
+            </button>
+          );
+        })}
       </div>
 
       {!store ? (
