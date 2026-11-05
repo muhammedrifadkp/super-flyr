@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { ContactBar, PoweredBy, ProductGrid, StoreHero, groupByCategory } from "@/components/public/PublicParts";
+import { InteractiveOfferCatalog, OfferCountdown } from "@/components/public/InteractiveCatalog";
+import { PoweredBy, StoreHero } from "@/components/public/PublicParts";
 import { getRepo } from "@/lib/db";
 import { discountPercent, formatValidity, isExpired, resolveItems } from "@/lib/format";
 import { normalizeStyle, pageColor, readableOn } from "@/lib/poster/templates";
@@ -47,11 +48,11 @@ async function Offer({ params }: { params: PageProps<"/o/[slug]">["params"] }) {
   const style = normalizeStyle(poster.style);
   const validity = formatValidity(content.validFrom, content.validTo);
   const ended = isExpired(content.validTo);
-  const groups = groupByCategory(items);
+  const themeColor = pageColor(style);
 
   return (
     <div className="min-h-dvh bg-gray-50" style={{ colorScheme: "light" }}>
-      <StoreHero store={store} color={pageColor(style)}>
+      <StoreHero store={store} color={themeColor}>
         <div className="mx-auto max-w-5xl px-4 pb-6">
           <h1 className="text-3xl font-black uppercase tracking-tight sm:text-4xl">{content.headline || poster.title}</h1>
           {content.headlineMl ? (
@@ -59,13 +60,15 @@ async function Offer({ params }: { params: PageProps<"/o/[slug]">["params"] }) {
               {content.headlineMl}
             </p>
           ) : null}
-          <div className="mt-3 flex flex-wrap gap-2 text-sm">
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm">
             {content.subheadline ? <span className="rounded-full bg-white/20 px-3 py-1">{content.subheadline}</span> : null}
+            {content.deliveryBadge ? <span className="rounded-full bg-white/20 px-3 py-1 font-semibold">{content.deliveryBadge}</span> : null}
             {validity ? (
               <span className="rounded-full px-3 py-1 font-semibold" style={{ background: style.badgeBg, color: readableOn(style.badgeBg) }}>
                 {validity}
               </span>
             ) : null}
+            {!ended && content.validTo ? <OfferCountdown validTo={content.validTo} /> : null}
           </div>
         </div>
       </StoreHero>
@@ -79,23 +82,18 @@ async function Offer({ params }: { params: PageProps<"/o/[slug]">["params"] }) {
         {items.length === 0 ? (
           <p className="rounded-xl bg-white p-8 text-center text-gray-600 ring-1 ring-gray-200">No products in this offer yet.</p>
         ) : (
-          <div className="space-y-8">
-            {groups.map((group) => (
-              <section key={group.category || "all"} aria-labelledby={group.category ? `cat-${group.category}` : undefined}>
-                {group.category ? (
-                  <h2 id={`cat-${group.category}`} className="mb-3 text-lg font-bold text-gray-950">
-                    {group.category}
-                  </h2>
-                ) : null}
-                <ProductGrid items={group.items} priceColor={style.priceBg} badgeColor={style.badgeBg} />
-              </section>
-            ))}
-          </div>
+          <InteractiveOfferCatalog
+            items={items}
+            store={store}
+            posterTitle={content.headline || poster.title}
+            priceColor={style.priceBg}
+            badgeColor={style.badgeBg}
+            themeColor={themeColor}
+          />
         )}
         {content.footerNote ? <p className="mt-6 text-center text-xs text-gray-500">{content.footerNote}</p> : null}
       </main>
 
-      <ContactBar store={store} color={pageColor(style)} message={`Hi, I saw your “${content.headline || poster.title}” offers.`} />
       <PoweredBy />
     </div>
   );

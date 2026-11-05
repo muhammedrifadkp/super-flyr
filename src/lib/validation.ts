@@ -68,6 +68,7 @@ export const posterItemSchema = z.object({
   unit: text(20).optional(),
   normalPrice: price.optional(),
   offerPrice: price.optional(),
+  tag: text(24).optional(),
 });
 
 export const posterLayoutSchema = z.object({
@@ -77,6 +78,7 @@ export const posterLayoutSchema = z.object({
   gap: z.number().min(0).max(80),
   imageScale: z.number().min(0.5).max(1.6),
   headerSize: z.number().min(0.6).max(1.6).default(1),
+  heroFirst: z.boolean().default(false),
 });
 
 export const posterStyleSchema = z.object({
@@ -133,6 +135,8 @@ export const posterContentSchema = z.object({
   heroImageUrl: imageUrl.default(""),
   heroEmoji: text(16).default(""),
   nameMode: z.enum(["both", "en", "ml"]).default("both"),
+  badgeMode: z.enum(["percent", "save", "smart", "bogo"]).default("percent"),
+  deliveryBadge: text(40).default(""),
   footerNote: text(160),
   validFrom: day,
   validTo: day,
@@ -142,6 +146,7 @@ export const posterContentSchema = z.object({
   showContact: z.boolean(),
   showValidity: z.boolean(),
   showHero: z.boolean().default(true),
+  showQr: z.boolean().default(false),
 });
 
 export const posterPatchSchema = z

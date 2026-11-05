@@ -1,11 +1,12 @@
 "use client";
 
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { api, useProducts, useStore } from "@/lib/client/api";
 import { addDays, discountPercent, todayIst } from "@/lib/format";
+import { resolveProductImageUrl } from "@/lib/keralaCatalogue";
 import { FORMATS, TEMPLATES, TEMPLATE_CATEGORIES, applyBrandColors, defaultContent, defaultLayout, type TemplateCategory } from "@/lib/poster/templates";
 import type { FormatKey, Poster, Product, ResolvedItem } from "@/lib/types";
 import { FittedPoster } from "../poster/PosterPreview";
@@ -13,12 +14,12 @@ import { useToast } from "../Toast";
 import { Skeleton, Spinner, cx } from "../ui";
 
 const SAMPLE: ResolvedItem[] = [
-  { name: "Tomato", nameMl: "തക്കാളി", normal: 40, offer: 29 },
-  { name: "Carrot", nameMl: "കാരറ്റ്", normal: 60, offer: 45 },
-  { name: "Banana", nameMl: "പഴം", normal: 70, offer: 55 },
-  { name: "Apple", nameMl: "ആപ്പിൾ", normal: 220, offer: 179 },
-  { name: "Milk", nameMl: "പാൽ", normal: 56, offer: 52 },
-  { name: "Rice", nameMl: "അരി", normal: 320, offer: 285 },
+  { name: "Tomato", nameMl: "തക്കാളി", normal: 40, offer: 28, imageUrl: "/poster-assets/products/tomato.png" },
+  { name: "Ooty Carrot", nameMl: "കാരറ്റ്", normal: 65, offer: 48, imageUrl: "/poster-assets/products/carrot.png" },
+  { name: "Nendran Banana", nameMl: "നേന്ത്രപ്പഴം", normal: 72, offer: 56, imageUrl: "/poster-assets/products/banana.png" },
+  { name: "Kashmir Apple", nameMl: "ആപ്പിൾ", normal: 220, offer: 175, imageUrl: "/poster-assets/products/apple.png" },
+  { name: "Nestle Milkmaid", nameMl: "മിൽക്ക്മെയ്ഡ്", normal: 152, offer: 135, imageUrl: "/poster-assets/products/milkmaid.png" },
+  { name: "Palakkadan Matta Rice", nameMl: "പാലക്കാടൻ മട്ട അരി", normal: 325, offer: 279, imageUrl: "/poster-assets/products/rice-bag.png" },
 ].map((s, i) => ({
   id: `s${i}`,
   productId: `s${i}`,
@@ -26,13 +27,13 @@ const SAMPLE: ResolvedItem[] = [
   nameMl: s.nameMl,
   unit: "kg",
   category: "",
-  imageUrl: "",
+  imageUrl: s.imageUrl,
   normalPrice: s.normal,
   offerPrice: s.offer,
 }));
 
 function toResolved(p: Product): ResolvedItem {
-  return { ...p, productId: p.id };
+  return { ...p, productId: p.id, imageUrl: resolveProductImageUrl(p) };
 }
 
 export function NewPosterScreen() {
@@ -53,8 +54,9 @@ export function NewPosterScreen() {
       let picks = (products ?? []).filter((p) => (t.autoCategory ? p.category === t.autoCategory : discountPercent(p.normalPrice, p.offerPrice) > 0));
       if (!picks.length) picks = products ?? [];
       const items = picks.length ? picks.slice(0, 6).map(toResolved) : SAMPLE;
-      const poster: Pick<Poster, "id" | "layout" | "style" | "content"> = {
+      const poster: Pick<Poster, "id" | "templateId" | "layout" | "style" | "content"> = {
         id: t.id,
+        templateId: t.id,
         layout: defaultLayout(format, t),
         style: t.brand ? applyBrandColors(t.style, store.colors) : t.style,
         content: defaultContent(t, today, addDays(today, t.validDays - 1)),
@@ -149,7 +151,29 @@ export function NewPosterScreen() {
                   ) : null}
                 </div>
                 <div className="px-1 pb-1 pt-3">
-                  <p className="font-semibold text-gray-950">{template.name}</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-semibold text-gray-950">{template.name}</p>
+                    {template.canvaUrl ? (
+                      <span
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          window.open(template.canvaUrl, "_blank", "noopener,noreferrer");
+                        }}
+                        role="link"
+                        tabIndex={0}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.stopPropagation();
+                            window.open(template.canvaUrl, "_blank", "noopener,noreferrer");
+                          }
+                        }}
+                        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700 ring-1 ring-violet-200 hover:bg-violet-100"
+                      >
+                        <ExternalLink className="size-3" aria-hidden="true" />
+                        Canva
+                      </span>
+                    ) : null}
+                  </div>
                   <p className="text-sm text-gray-600">{template.description}</p>
                   {template.autoCategory ? (
                     <p className="mt-1 text-xs font-medium text-brand-700">

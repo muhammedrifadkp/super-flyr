@@ -195,13 +195,47 @@ export async function encodeImage(canvas: HTMLCanvasElement): Promise<Blob> {
   return fallback;
 }
 
-/** Draws an emoji into a transparent image. Used for the demo catalogue. */
-export async function emojiToBlob(emoji: string, size = 480): Promise<Blob> {
+/** Draws a studio-lit product illustration with podium shadow into a transparent image. Used for the demo & master catalogue. */
+export async function emojiToBlob(emoji: string, size = 520, accent = "#16a34a"): Promise<Blob> {
   const canvas = makeCanvas(size, size);
   const ctx = context(canvas);
-  ctx.font = `${Math.round(size * 0.8)}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
+  const cx = size / 2;
+  const cy = size * 0.48;
+
+  // Soft studio backdrop disc
+  const discGrad = ctx.createRadialGradient(cx, cy - size * 0.06, size * 0.04, cx, cy, size * 0.42);
+  discGrad.addColorStop(0, "#ffffff");
+  discGrad.addColorStop(0.7, `${accent}18`);
+  discGrad.addColorStop(1, "rgba(255,255,255,0)");
+  ctx.fillStyle = discGrad;
+  ctx.beginPath();
+  ctx.arc(cx, cy, size * 0.42, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Floor contact shadow (3D podium feel)
+  ctx.save();
+  ctx.translate(cx, size * 0.84);
+  ctx.scale(1, 0.22);
+  const shadowGrad = ctx.createRadialGradient(0, 0, size * 0.02, 0, 0, size * 0.34);
+  shadowGrad.addColorStop(0, "rgba(15,23,42,0.34)");
+  shadowGrad.addColorStop(0.6, "rgba(15,23,42,0.14)");
+  shadowGrad.addColorStop(1, "rgba(15,23,42,0)");
+  ctx.fillStyle = shadowGrad;
+  ctx.beginPath();
+  ctx.arc(0, 0, size * 0.34, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // Main product glyph with subtle drop shadow
+  ctx.save();
+  ctx.shadowColor = "rgba(15,23,42,0.22)";
+  ctx.shadowBlur = size * 0.045;
+  ctx.shadowOffsetY = size * 0.025;
+  ctx.font = `${Math.round(size * 0.68)}px "Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.fillText(emoji, size / 2, size * 0.54);
-  return encodeImage(trimTransparent(canvas));
+  ctx.fillText(emoji, cx, cy);
+  ctx.restore();
+
+  return encodeImage(trimTransparent(canvas, 0.02));
 }

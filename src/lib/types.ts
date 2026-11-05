@@ -37,6 +37,7 @@ export type BadgeShape = "burst" | "circle" | "tag" | "corner" | "dot";
 export type FooterStyle = "band" | "split" | "strip" | "banner";
 export type StripStyle = "pill" | "bar";
 export type NameMode = "both" | "en" | "ml";
+export type BadgeMode = "percent" | "save" | "smart" | "bogo";
 
 export interface BrandColors {
   primary: string;
@@ -85,6 +86,8 @@ export interface PosterItem {
   unit?: string;
   normalPrice?: number;
   offerPrice?: number;
+  /** Optional custom badge label for this item, e.g. "BUY 1 GET 1" or "COMBO". */
+  tag?: string;
 }
 
 export interface PosterStyle {
@@ -152,6 +155,8 @@ export interface PosterLayout {
   imageScale: number;
   /** 0.7 – 1.5, scales the header height */
   headerSize: number;
+  /** Highlights the 1st product on page 1 across 2 columns as a Mega Deal. */
+  heroFirst?: boolean;
 }
 
 export interface PosterContent {
@@ -172,6 +177,10 @@ export interface PosterContent {
   heroEmoji: string;
   /** Which product names to print. */
   nameMode: NameMode;
+  /** How product discount badges are displayed (% OFF, SAVE ₹, Smart, BOGO). */
+  badgeMode?: BadgeMode;
+  /** Optional delivery / highlight stamp text, e.g. "FREE HOME DELIVERY". */
+  deliveryBadge?: string;
   footerNote: string;
   /** YYYY-MM-DD or "" */
   validFrom: string;
@@ -183,6 +192,8 @@ export interface PosterContent {
   showContact: boolean;
   showValidity: boolean;
   showHero: boolean;
+  /** Shows a scannable QR code on the poster footer linking to the online offer page / WhatsApp. */
+  showQr?: boolean;
 }
 
 export interface Poster {
@@ -215,4 +226,5 @@ export interface ResolvedItem {
   imageUrl: string;
   normalPrice: number;
   offerPrice: number;
+  tag?: string;
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, Home, ImagePlus, LogOut, Package, Settings, Store as StoreIcon, TriangleAlert } from "lucide-react";
+import { Download, Home, ImagePlus, LogOut, Package, Settings, Store as StoreIcon, Tv } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -57,10 +57,6 @@ export function DashboardShell({ children }: { children: ReactNode }) {
     router.replace("/login");
   }
 
-  const warnings: string[] = [];
-  if (status && status.database === "local") warnings.push("Demo storage: data is saved on this computer only.");
-  if (status && !status.auth) warnings.push("Login is off. Set ADMIN_PASSWORD before going live.");
-
   return (
     <>
       <a
@@ -104,14 +100,16 @@ export function DashboardShell({ children }: { children: ReactNode }) {
               <StoreIcon className="size-[18px]" aria-hidden="true" />
               Public offers page
             </Link>
+            <Link
+              href="/tv"
+              target="_blank"
+              className="flex h-10 items-center gap-3 rounded-lg px-3 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 hover:text-gray-950"
+            >
+              <Tv className="size-[18px]" aria-hidden="true" />
+              Smart TV display
+            </Link>
           </nav>
           <div className="mt-auto space-y-2 p-3">
-            {warnings.map((w) => (
-              <p key={w} className="flex gap-2 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-900 ring-1 ring-amber-200">
-                <TriangleAlert className="size-4 shrink-0" aria-hidden="true" />
-                {w}
-              </p>
-            ))}
             {install ? (
               <button
                 type="button"

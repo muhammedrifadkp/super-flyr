@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, Globe, ImagePlus, Package, Palette, Plus } from "lucide-react";
+import { ArrowRight, ExternalLink, Globe, ImagePlus, Package, Palette, Plus, ShoppingBag, Sparkles, Tv } from "lucide-react";
 import Link from "next/link";
 import { usePosters, useProducts, useStore } from "@/lib/client/api";
 import { discountPercent } from "@/lib/format";
@@ -42,6 +42,66 @@ export function HomeScreen() {
         <Stat label="On offer" value={products ? onOffer : undefined} href="/dashboard/products" />
         <Stat label="Published posters" value={posters ? published : undefined} href="/dashboard/posters" />
       </div>
+
+      <section className="mt-6 grid gap-3 sm:grid-cols-3">
+        <a
+          href="/"
+          target="_blank"
+          rel="noreferrer"
+          className="group flex items-start gap-3 rounded-xl bg-gradient-to-br from-emerald-600 to-emerald-800 p-4 text-white shadow-sm transition hover:shadow-md"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white/15">
+            <ShoppingBag className="size-5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 text-sm font-bold">
+              <span>WhatsApp Mini-Store</span>
+              <ExternalLink className="size-3.5 opacity-80" aria-hidden="true" />
+            </div>
+            <p className="mt-0.5 text-xs text-emerald-100">
+              Live customer storefront with +Add cart & direct WhatsApp order checkout
+            </p>
+          </div>
+        </a>
+
+        <a
+          href="/tv"
+          target="_blank"
+          rel="noreferrer"
+          className="group flex items-start gap-3 rounded-xl bg-gradient-to-br from-slate-900 to-slate-800 p-4 text-white shadow-sm transition hover:shadow-md"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-amber-400/20 text-amber-300">
+            <Tv className="size-5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 text-sm font-bold">
+              <span>Smart TV Live Display</span>
+              <ExternalLink className="size-3.5 opacity-80" aria-hidden="true" />
+            </div>
+            <p className="mt-0.5 text-xs text-slate-300">
+              Full-screen 16:9 auto-rotating offer slides & QR code for in-store TVs
+            </p>
+          </div>
+        </a>
+
+        <Link
+          href="/dashboard/products"
+          className="group flex items-start gap-3 rounded-xl bg-white p-4 shadow-sm ring-1 ring-gray-950/5 transition hover:shadow-md"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+            <Sparkles className="size-5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 text-sm font-bold text-gray-950">
+              <span>Kerala Catalogue & Rate Board</span>
+              <ArrowRight className="size-3.5 text-gray-400 transition group-hover:translate-x-0.5" aria-hidden="true" />
+            </div>
+            <p className="mt-0.5 text-xs text-gray-600">
+              45+ ready Kerala items, Auto മലയാളം typing, CSV import & 1-click Rate Poster
+            </p>
+          </div>
+        </Link>
+      </section>
 
       {!loading && !allDone ? (
         <Card className="mt-6 p-5">

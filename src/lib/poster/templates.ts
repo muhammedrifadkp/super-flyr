@@ -16,7 +16,55 @@ type TemplateContent = Pick<
   PosterContent,
   "kicker" | "headline" | "headline2" | "headlineMl" | "subheadline" | "badgeText" | "offerLabel" | "offerValue" | "heroEmoji" | "nameMode"
 > &
-  Partial<Pick<PosterContent, "footerNote" | "showDiscount" | "showMrp">>;
+  Partial<Pick<PosterContent, "heroImageUrl" | "footerNote" | "showDiscount" | "showMrp" | "badgeMode" | "deliveryBadge" | "showQr">>;
+
+export interface HeroPreset {
+  id: string;
+  label: string;
+  url: string;
+}
+
+export const HERO_PRESETS: HeroPreset[] = [
+  { id: "veggie-basket", label: "Veggie Basket", url: "/poster-assets/heroes/veggie-basket.png" },
+  { id: "trolley-groceries", label: "Grocery Trolley", url: "/poster-assets/heroes/trolley-groceries.png" },
+  { id: "red-grocery-basket", label: "Red Basket", url: "/poster-assets/heroes/red-grocery-basket.png" },
+  { id: "fresh-fruits-splash", label: "Fresh Fruits", url: "/poster-assets/heroes/fresh-fruits-splash.png" },
+  { id: "onam-mahabali", label: "Onam Mahabali", url: "/poster-assets/heroes/onam-mahabali.png" },
+  { id: "vishu-kani", label: "Vishu Kani", url: "/poster-assets/heroes/vishu-kani.png" },
+  { id: "ramzan-iftar", label: "Ramzan Hamper", url: "/poster-assets/heroes/ramzan-iftar.png" },
+  { id: "fresh-fish-meat", label: "Meat & Fish", url: "/poster-assets/heroes/fresh-fish-meat.png" },
+  { id: "mega-saver-hamper", label: "Mega Hamper", url: "/poster-assets/heroes/mega-saver-hamper.png" },
+  { id: "marigold-cluster", label: "Marigold Garland", url: "/poster-assets/heroes/marigold-cluster.png" },
+];
+
+const LEGACY_EMOJI_HERO_MAP: Record<string, string> = {
+  "🛒": "/poster-assets/heroes/trolley-groceries.png",
+  "🧺": "/poster-assets/heroes/veggie-basket.png",
+  "🍑": "/poster-assets/heroes/fresh-fruits-splash.png",
+  "🍎": "/poster-assets/heroes/fresh-fruits-splash.png",
+  "🥦": "/poster-assets/heroes/veggie-basket.png",
+  "🌼": "/poster-assets/heroes/onam-mahabali.png",
+  "🌸": "/poster-assets/heroes/onam-mahabali.png",
+  "🐟": "/poster-assets/heroes/fresh-fish-meat.png",
+  "🍗": "/poster-assets/heroes/fresh-fish-meat.png",
+  "🌴": "/poster-assets/heroes/ramzan-iftar.png",
+  "🌙": "/poster-assets/heroes/ramzan-iftar.png",
+  "🎁": "/poster-assets/heroes/mega-saver-hamper.png",
+};
+
+export function resolveHeroImageUrl(content: Pick<PosterContent, "heroImageUrl" | "heroEmoji">, templateId?: string): string {
+  if (content.heroImageUrl && content.heroImageUrl.trim().length > 0) {
+    return content.heroImageUrl;
+  }
+  if (content.heroEmoji && LEGACY_EMOJI_HERO_MAP[content.heroEmoji.trim()]) {
+    return LEGACY_EMOJI_HERO_MAP[content.heroEmoji.trim()];
+  }
+  if (templateId) {
+    const found = TEMPLATES.find((t) => t.id === templateId);
+    if (found?.content.heroImageUrl) return found.content.heroImageUrl;
+  }
+  return "/poster-assets/heroes/veggie-basket.png";
+}
 
 export interface PosterTemplate {
   id: string;
@@ -32,6 +80,9 @@ export interface PosterTemplate {
   validDays: number;
   /** Uses the store brand colours instead of fixed colours. */
   brand?: boolean;
+  /** Linked Canva design ID and URL in the user's connected Canva account. */
+  canvaDesignId?: string;
+  canvaUrl?: string;
 }
 
 /** Every style field with a neutral value. Old posters are filled in with these. */
@@ -99,6 +150,8 @@ export const TEMPLATES: PosterTemplate[] = [
     description: "Maroon & gold block header with an offer box, white cards and corner discount tabs.",
     category: "weekend",
     validDays: 2,
+    canvaDesignId: "DAHaFjEb_LU",
+    canvaUrl: "https://canva.link/djpa71yrb44x2it",
     style: s({
       bgTop: "#ffffff",
       bgBottom: "#fbf6f0",
@@ -106,9 +159,10 @@ export const TEMPLATES: PosterTemplate[] = [
       headerBg: "#7a0c0c",
       headerText: "#ffffff",
       headlineColor: "#ffc928",
+      headline3d: true,
       panelBg: "#ffc928",
       panelText: "#7a0c0c",
-      cardRadius: 4,
+      cardRadius: 10,
       nameColor: "#7a0c0c",
       priceBg: "#7a0c0c",
       priceText: "#ffffff",
@@ -129,15 +183,17 @@ export const TEMPLATES: PosterTemplate[] = [
       subheadline: "GET SPECIAL DISCOUNT ➤",
       offerLabel: "GET UP TO",
       offerValue: "70%",
+      heroImageUrl: "/poster-assets/heroes/red-grocery-basket.png",
     }),
   },
   {
     id: "fresh-deals-grid",
     name: "Fresh Deals Grid",
-    description: "Bright red board with a white header, serif title and a 4-column product grid.",
+    description: "Bright red board with a white header, serif title and a multi-column product grid.",
     category: "weekend",
     validDays: 2,
-    layout: { columns: 4 },
+    canvaDesignId: "DAHaFjEb_LU",
+    canvaUrl: "https://canva.link/djpa71yrb44x2it",
     style: s({
       bgTop: "#e31e24",
       bgBottom: "#cf1219",
@@ -148,8 +204,8 @@ export const TEMPLATES: PosterTemplate[] = [
       headlineColor: "#1f7a3a",
       panelBg: "#e31e24",
       panelText: "#ffffff",
-      cardRadius: 12,
-      cardShadow: false,
+      cardRadius: 14,
+      cardShadow: true,
       nameColor: "#1f7a3a",
       priceBg: "#e31e24",
       badgeShape: "dot",
@@ -163,7 +219,13 @@ export const TEMPLATES: PosterTemplate[] = [
       headingFont: "bree",
       priceFont: "poppins",
     }),
-    content: c({ kicker: "Weekend", headline: "Fresh", headline2: "Deals", headlineMl: "ഫ്രഷ് ഓഫറുകൾ" }),
+    content: c({
+      kicker: "Weekend",
+      headline: "Fresh",
+      headline2: "Deals",
+      headlineMl: "ഫ്രഷ് ഓഫറുകൾ",
+      heroImageUrl: "/poster-assets/heroes/veggie-basket.png",
+    }),
   },
   {
     id: "wood-fresh-market",
@@ -171,7 +233,7 @@ export const TEMPLATES: PosterTemplate[] = [
     description: "Light wood background, green half-circle header and round yellow price badges.",
     category: "fresh",
     validDays: 3,
-    layout: { imageScale: 1.15 },
+    layout: { imageScale: 1.12 },
     style: s({
       bgTop: "#f1f3f1",
       bgBottom: "#dfe3df",
@@ -195,7 +257,13 @@ export const TEMPLATES: PosterTemplate[] = [
       headingFont: "lilita",
       priceFont: "lilita",
     }),
-    content: c({ headline: "FRESH", headline2: "Deals", headlineMl: "ഫ്രഷ് ഓഫറുകൾ", showDiscount: false }),
+    content: c({
+      headline: "FRESH",
+      headline2: "Deals",
+      headlineMl: "ഫ്രഷ് ഓഫറുകൾ",
+      heroImageUrl: "/poster-assets/heroes/fresh-fruits-splash.png",
+      showDiscount: false,
+    }),
   },
   {
     id: "green-fresh-deals",
@@ -204,7 +272,7 @@ export const TEMPLATES: PosterTemplate[] = [
     category: "fresh",
     autoCategory: "Vegetables",
     validDays: 2,
-    layout: { imageScale: 1.15 },
+    layout: { imageScale: 1.12 },
     style: s({
       bgTop: "#ffffff",
       bgBottom: "#eef4ee",
@@ -231,7 +299,14 @@ export const TEMPLATES: PosterTemplate[] = [
       headingFont: "luckiest",
       priceFont: "lilita",
     }),
-    content: c({ headline: "FRESH", headline2: "DEALS", headlineMl: "പച്ചക്കറി ഓഫറുകൾ", subheadline: "MAIN BRANCH", showDiscount: false }),
+    content: c({
+      headline: "FRESH",
+      headline2: "DEALS",
+      headlineMl: "പച്ചക്കറി ഓഫറുകൾ",
+      subheadline: "MAIN BRANCH",
+      heroImageUrl: "/poster-assets/heroes/veggie-basket.png",
+      showDiscount: false,
+    }),
   },
   {
     id: "leafy-fresh-deal",
@@ -239,6 +314,8 @@ export const TEMPLATES: PosterTemplate[] = [
     description: "Sunny leaf background, script title and red price boxes with yellow name bars.",
     category: "fresh",
     validDays: 3,
+    canvaDesignId: "DAHaFpjLzzQ",
+    canvaUrl: "https://canva.link/hk4ozkhd06cu04a",
     style: s({
       bgTop: "#e3f4c7",
       bgBottom: "#a9d77f",
@@ -256,7 +333,7 @@ export const TEMPLATES: PosterTemplate[] = [
       stripText: "#ffffff",
       cardStyle: "panel",
       cardBg: "#ffffff",
-      cardRadius: 6,
+      cardRadius: 10,
       priceStyle: "bar",
       priceBg: "#d71920",
       priceText: "#ffffff",
@@ -269,16 +346,23 @@ export const TEMPLATES: PosterTemplate[] = [
       headingFont: "lobster",
       priceFont: "anton",
     }),
-    content: c({ headline: "fresh", headline2: "deal", headlineMl: "ഫ്രഷ് ഡീൽ", subheadline: "FRESH PROMOTION", showDiscount: false }),
+    content: c({
+      headline: "fresh",
+      headline2: "deal",
+      headlineMl: "ഫ്രഷ് ഡീൽ",
+      subheadline: "FRESH PROMOTION",
+      heroImageUrl: "/poster-assets/heroes/fresh-fruits-splash.png",
+      showDiscount: false,
+    }),
   },
   {
     id: "paper-fresh-deals",
     name: "Fresh Deals (Paper)",
-    description: "Cream paper texture, bubbly green title, big products with large prices.",
+    description: "Cream paper texture, bubbly 3D green title, studio fruits and big prices.",
     category: "fresh",
     autoCategory: "Fruits",
     validDays: 3,
-    layout: { columns: 2, rows: 2, imageScale: 1.1 },
+    layout: { imageScale: 1.08 },
     style: s({
       bgTop: "#f7f1e3",
       bgBottom: "#efe6d2",
@@ -305,14 +389,22 @@ export const TEMPLATES: PosterTemplate[] = [
       headingFont: "luckiest",
       priceFont: "lilita",
     }),
-    content: c({ headline: "Fresh", headline2: "DEALS", headlineMl: "ഫ്രഷ് ഓഫറുകൾ", subheadline: "SUNDAY | MONDAY | TUESDAY", heroEmoji: "🍑" }),
+    content: c({
+      headline: "Fresh",
+      headline2: "DEALS",
+      headlineMl: "ഫ്രഷ് ഓഫറുകൾ",
+      subheadline: "SUNDAY | MONDAY | TUESDAY",
+      heroImageUrl: "/poster-assets/heroes/fresh-fruits-splash.png",
+    }),
   },
   {
     id: "fresh-market-days",
     name: "Fresh Market Days",
-    description: "Deep green board, huge condensed title, shopping-cart picture and yellow price tags.",
+    description: "Deep green board, huge condensed title, studio grocery trolley and yellow price tags.",
     category: "weekly",
     validDays: 3,
+    canvaDesignId: "DAHaFmmQCxg",
+    canvaUrl: "https://canva.link/o6akfonh8hm44e2",
     style: s({
       bgTop: "#11823d",
       bgBottom: "#0b6a31",
@@ -320,6 +412,7 @@ export const TEMPLATES: PosterTemplate[] = [
       headerBg: "#11823d",
       headerText: "#ffffff",
       headlineColor: "#ffd21f",
+      headline3d: true,
       panelBg: "#ffd21f",
       panelText: "#0b3d1f",
       stripStyle: "bar",
@@ -343,17 +436,18 @@ export const TEMPLATES: PosterTemplate[] = [
       headline2: "DAYS",
       headlineMl: "ഫ്രഷ് മാർക്കറ്റ് ദിനങ്ങൾ",
       subheadline: "YOUR FAVOURITE WEEKDAY OFFERS!",
-      heroEmoji: "🛒",
+      heroImageUrl: "/poster-assets/heroes/trolley-groceries.png",
     }),
   },
   {
     id: "weekend-fresh-sale",
     name: "Weekend Fresh Sale",
-    description: "Teal board, yellow title circle, Malayalam names on white cards and red price tags.",
+    description: "Teal board, yellow title circle, studio vegetable basket and red slanted price tags.",
     category: "weekend",
     autoCategory: "Vegetables",
     validDays: 2,
-    layout: { columns: 4 },
+    canvaDesignId: "DAHaFsJqE_4",
+    canvaUrl: "https://canva.link/0ds8oe5l1ljwjlc",
     style: s({
       bgTop: "#25a5a0",
       bgBottom: "#0f6f6c",
@@ -368,7 +462,7 @@ export const TEMPLATES: PosterTemplate[] = [
       stripBg: "#111111",
       stripText: "#ffffff",
       cardRadius: 22,
-      cardShadow: false,
+      cardShadow: true,
       namePosition: "above",
       nameColor: "#111111",
       priceStyle: "slant",
@@ -386,7 +480,7 @@ export const TEMPLATES: PosterTemplate[] = [
       headline: "FRESH",
       headline2: "SALE",
       subheadline: "*ഈ ഓഫർ സ്റ്റോക്ക് തീരുന്നത് വരെ മാത്രം",
-      heroEmoji: "🧺",
+      heroImageUrl: "/poster-assets/heroes/veggie-basket.png",
       nameMode: "ml",
       footerNote: "ഈ ഓഫർ ഷോപ്പിൽ നിന്ന് നേരിട്ടുള്ള പർച്ചേസുകൾക്ക് മാത്രം",
       showDiscount: false,
@@ -395,9 +489,11 @@ export const TEMPLATES: PosterTemplate[] = [
   {
     id: "onam-chantha",
     name: "Onam Chantha",
-    description: "Marigold flowers, Malayalam title circle and red price flags on a golden board.",
+    description: "Real marigold garlands, Mahabali artwork, Malayalam title circle and red price flags.",
     category: "festival",
     validDays: 1,
+    canvaDesignId: "DAHaFkQF9AA",
+    canvaUrl: "https://canva.link/3tbgvu05udf4t3n",
     style: s({
       bgTop: "#ffd84a",
       bgBottom: "#ff8c00",
@@ -412,7 +508,7 @@ export const TEMPLATES: PosterTemplate[] = [
       stripStyle: "bar",
       stripBg: "#8b1a1a",
       stripText: "#ffffff",
-      cardRadius: 6,
+      cardRadius: 10,
       cardShadow: true,
       nameColor: "#1f2937",
       priceStyle: "flag",
@@ -428,7 +524,7 @@ export const TEMPLATES: PosterTemplate[] = [
       headline: "",
       headlineMl: "ഓണച്ചന്ത",
       subheadline: "FAMILY SHOP",
-      heroEmoji: "🌼",
+      heroImageUrl: "/poster-assets/heroes/onam-mahabali.png",
       nameMode: "en",
       footerNote: "എല്ലാവിധ ഓണം ഉൽപ്പന്നങ്ങളും ലഭ്യമാണ്",
       showDiscount: false,
@@ -440,6 +536,8 @@ export const TEMPLATES: PosterTemplate[] = [
     description: "Green swoosh, big 3D yellow title, red star discounts and red price tags.",
     category: "special",
     validDays: 7,
+    canvaDesignId: "DAHaFkKtyc8",
+    canvaUrl: "https://canva.link/6zbjxt3mhoxh5l7",
     style: s({
       bgTop: "#ffffff",
       bgBottom: "#ffffff",
@@ -471,7 +569,12 @@ export const TEMPLATES: PosterTemplate[] = [
       headingFont: "luckiest",
       priceFont: "anton",
     }),
-    content: c({ headline: "SPECIAL", headline2: "OFFERS", headlineMl: "സ്പെഷ്യൽ ഓഫറുകൾ", heroEmoji: "🧺" }),
+    content: c({
+      headline: "SPECIAL",
+      headline2: "OFFERS",
+      headlineMl: "സ്പെഷ്യൽ ഓഫറുകൾ",
+      heroImageUrl: "/poster-assets/heroes/red-grocery-basket.png",
+    }),
   },
   {
     id: "daily-deals",
@@ -485,6 +588,7 @@ export const TEMPLATES: PosterTemplate[] = [
       headerBg: "#d71920",
       headerText: "#ffffff",
       headlineColor: "#ffffff",
+      headline3d: true,
       decoration: "rays",
       decorationColor: "#ffd23f",
       priceBg: "#d71920",
@@ -492,7 +596,13 @@ export const TEMPLATES: PosterTemplate[] = [
       badgeText: "#b3121a",
       footerBg: "#d71920",
     }),
-    content: c({ headline: "TODAY'S OFFERS", headlineMl: "ഇന്നത്തെ ഓഫറുകൾ", subheadline: "Best prices in town", badgeText: "TODAY ONLY" }),
+    content: c({
+      headline: "TODAY'S OFFERS",
+      headlineMl: "ഇന്നത്തെ ഓഫറുകൾ",
+      subheadline: "Best prices in town",
+      badgeText: "TODAY ONLY",
+      heroImageUrl: "/poster-assets/heroes/trolley-groceries.png",
+    }),
   },
   {
     id: "festival",
@@ -500,6 +610,8 @@ export const TEMPLATES: PosterTemplate[] = [
     description: "Kerala kasavu cream & gold with a maroon ribbon for Onam, Vishu and festivals.",
     category: "festival",
     validDays: 5,
+    canvaDesignId: "DAHaFkQF9AA",
+    canvaUrl: "https://canva.link/3tbgvu05udf4t3n",
     style: s({
       bgTop: "#fffaf0",
       bgBottom: "#f8ecc9",
@@ -518,7 +630,13 @@ export const TEMPLATES: PosterTemplate[] = [
       cardRadius: 16,
       mlFont: "manjari",
     }),
-    content: c({ headline: "FESTIVAL OFFERS", headlineMl: "ഉത്സവ ഓഫറുകൾ", subheadline: "Celebrate with savings", badgeText: "SPECIAL" }),
+    content: c({
+      headline: "FESTIVAL OFFERS",
+      headlineMl: "ഉത്സവ ഓഫറുകൾ",
+      subheadline: "Celebrate with savings",
+      badgeText: "SPECIAL",
+      heroImageUrl: "/poster-assets/heroes/onam-mahabali.png",
+    }),
   },
   {
     id: "brand-classic",
@@ -536,11 +654,261 @@ export const TEMPLATES: PosterTemplate[] = [
       priceBg: "#d71920",
       badgeBg: "#ffcc00",
       badgeText: "#111827",
-      cardShadow: false,
+      cardShadow: true,
       headingFont: "poppins",
       priceFont: "poppins",
     }),
-    content: c({ headline: "SPECIAL OFFERS", headlineMl: "സ്പെഷ്യൽ ഓഫറുകൾ" }),
+    content: c({
+      headline: "SPECIAL OFFERS",
+      headlineMl: "സ്പെഷ്യൽ ഓഫറുകൾ",
+      heroImageUrl: "/poster-assets/heroes/trolley-groceries.png",
+    }),
+  },
+  {
+    id: "ramzan-special",
+    name: "Ramzan / Eid Iftar Deals",
+    description: "Emerald green & royal gold board with crescent hamper for Ramzan and Eid offers.",
+    category: "festival",
+    validDays: 5,
+    canvaDesignId: "DAHaFrM-t6E",
+    canvaUrl: "https://canva.link/ecbcxddt3tcjhzs",
+    style: s({
+      bgTop: "#064e3b",
+      bgBottom: "#022c22",
+      bgPattern: "bokeh",
+      headerStyle: "arc",
+      headerBg: "#047857",
+      headerText: "#ffffff",
+      headlineColor: "#fde047",
+      headline3d: true,
+      decoration: "sparkles",
+      decorationColor: "#facc15",
+      panelBg: "#facc15",
+      panelText: "#064e3b",
+      stripStyle: "pill",
+      stripBg: "#fef08a",
+      stripText: "#064e3b",
+      cardRadius: 18,
+      cardShadow: true,
+      nameColor: "#064e3b",
+      priceStyle: "pill",
+      priceBg: "#047857",
+      priceText: "#ffffff",
+      badgeBg: "#facc15",
+      badgeText: "#064e3b",
+      badgeShape: "burst",
+      footerStyle: "split",
+      footerBg: "#022c22",
+      footerText: "#ffffff",
+      footerAccent: "#facc15",
+      headingFont: "oswald",
+      priceFont: "anton",
+      mlFont: "baloo",
+    }),
+    content: c({
+      kicker: "RAMZAN SPECIAL",
+      headline: "IFTAR",
+      headline2: "MEGA DEALS",
+      headlineMl: "റമദാൻ ഇഫ്താർ ഓഫറുകൾ",
+      subheadline: "Dates, Fruits & Grocery Specials",
+      badgeText: "EID SALE",
+      heroImageUrl: "/poster-assets/heroes/ramzan-iftar.png",
+      badgeMode: "smart",
+    }),
+  },
+  {
+    id: "vishu-bumper",
+    name: "Vishu Kani Bumper",
+    description: "Golden konna flower theme with Vishu Kani brass uruli and maroon price tags.",
+    category: "festival",
+    validDays: 4,
+    canvaDesignId: "DAHaFkQF9AA",
+    canvaUrl: "https://canva.link/3tbgvu05udf4t3n",
+    style: s({
+      bgTop: "#fef9c3",
+      bgBottom: "#fde047",
+      headerStyle: "split",
+      headerBg: "#881337",
+      headerText: "#ffffff",
+      headlineColor: "#fde047",
+      headline3d: true,
+      decoration: "flowers",
+      decorationColor: "#eab308",
+      panelBg: "#fde047",
+      panelText: "#881337",
+      cardRadius: 16,
+      nameColor: "#1f2937",
+      priceStyle: "tag",
+      priceBg: "#881337",
+      priceText: "#ffffff",
+      badgeBg: "#15803d",
+      badgeText: "#ffffff",
+      badgeShape: "circle",
+      footerStyle: "split",
+      footerBg: "#881337",
+      footerText: "#fef08a",
+      footerAccent: "#fde047",
+      headingFont: "poppins",
+      priceFont: "anton",
+      mlFont: "baloo",
+    }),
+    content: c({
+      kicker: "FESTIVAL SPECIAL",
+      headline: "VISHU",
+      headline2: "CHANTHA",
+      headlineMl: "വിഷു ബമ്പർ ചന്ത",
+      subheadline: "വിലക്കുറവിന്റെ ഉത്സവകാലം",
+      offerLabel: "SAVE UP TO",
+      offerValue: "60%",
+      heroImageUrl: "/poster-assets/heroes/vishu-kani.png",
+      badgeMode: "save",
+    }),
+  },
+  {
+    id: "fish-meat-catch",
+    name: "Fresh Fish & Meat Catch",
+    description: "Ocean blue & coral red board for daily fish, prawns, chicken and meat rates.",
+    category: "daily",
+    autoCategory: "Meat & Fish",
+    validDays: 1,
+    style: s({
+      bgTop: "#f0f9ff",
+      bgBottom: "#e0f2fe",
+      headerStyle: "stack",
+      headerBg: "#0369a1",
+      headerText: "#0c4a6e",
+      headlineColor: "#dc2626",
+      headline3d: true,
+      panelBg: "#0284c7",
+      panelText: "#ffffff",
+      stripStyle: "bar",
+      stripBg: "#0c4a6e",
+      stripText: "#38bdf8",
+      cardRadius: 18,
+      cardShadow: true,
+      nameColor: "#0f172a",
+      priceStyle: "slant",
+      priceBg: "#dc2626",
+      priceText: "#ffffff",
+      badgeBg: "#facc15",
+      badgeText: "#7f1d1d",
+      badgeShape: "tag",
+      footerStyle: "split",
+      footerBg: "#0c4a6e",
+      footerText: "#ffffff",
+      footerAccent: "#38bdf8",
+      headingFont: "anton",
+      priceFont: "anton",
+      mlFont: "baloo",
+    }),
+    content: c({
+      kicker: "100% FRESH CATCH",
+      headline: "TODAY'S",
+      headline2: "FISH & MEAT",
+      headlineMl: "ഇന്നത്തെ ഫ്രഷ് മത്സ്യ-മാംസ വിലവിവരം",
+      subheadline: "Cleaned & Hygienic • Fast Home Delivery",
+      badgeText: "FRESH",
+      heroImageUrl: "/poster-assets/heroes/fresh-fish-meat.png",
+      badgeMode: "save",
+    }),
+  },
+  {
+    id: "salary-week-mega",
+    name: "Salary Week Budget Saver",
+    description: "Bold royal blue & yellow supermarket flyer showing flat Rupee savings.",
+    category: "special",
+    validDays: 7,
+    layout: { heroFirst: true },
+    style: s({
+      bgTop: "#eff6ff",
+      bgBottom: "#dbeafe",
+      headerStyle: "split",
+      headerBg: "#1e3a8a",
+      headerText: "#ffffff",
+      headlineColor: "#facc15",
+      headline3d: true,
+      panelBg: "#facc15",
+      panelText: "#1e3a8a",
+      cardRadius: 14,
+      cardShadow: true,
+      nameColor: "#1e3a8a",
+      priceStyle: "pill",
+      priceBg: "#dc2626",
+      priceText: "#ffffff",
+      badgeBg: "#facc15",
+      badgeText: "#1e3a8a",
+      badgeShape: "corner",
+      footerStyle: "split",
+      footerBg: "#1e3a8a",
+      footerText: "#ffffff",
+      footerAccent: "#facc15",
+      headingFont: "montserrat",
+      priceFont: "anton",
+      mlFont: "anek",
+    }),
+    content: c({
+      kicker: "1st TO 10th BUDGET SALE",
+      headline: "MONTHLY",
+      headline2: "MEGA SAVER",
+      headlineMl: "മാസാവസാന കുടുംബ ബജറ്റ് ഓഫർ",
+      subheadline: "കുടുംബ ബജറ്റിന് കൈത്താങ്ങ് • Free Home Delivery",
+      offerLabel: "SAVE BIG",
+      offerValue: "50%",
+      heroImageUrl: "/poster-assets/heroes/mega-saver-hamper.png",
+      badgeMode: "save",
+      showQr: true,
+    }),
+  },
+  {
+    id: "combo-dhamaka",
+    name: "Combo & BOGO Dhamaka",
+    description: "Vibrant purple & gold flyer designed for Buy 1 Get 1 and Combo packs.",
+    category: "special",
+    validDays: 3,
+    style: s({
+      bgTop: "#faf5ff",
+      bgBottom: "#f3e8ff",
+      bgPattern: "bokeh",
+      headerStyle: "banner",
+      headerBg: "#581c87",
+      headerText: "#ffffff",
+      headlineColor: "#facc15",
+      headline3d: true,
+      decoration: "rays",
+      decorationColor: "#a855f7",
+      panelBg: "#facc15",
+      panelText: "#581c87",
+      stripStyle: "pill",
+      stripBg: "#581c87",
+      stripText: "#facc15",
+      cardRadius: 20,
+      cardShadow: true,
+      nameColor: "#3b0764",
+      priceStyle: "circle",
+      priceBg: "#dc2626",
+      priceText: "#ffffff",
+      priceAccent: "#facc15",
+      badgeBg: "#facc15",
+      badgeText: "#581c87",
+      badgeShape: "burst",
+      footerStyle: "banner",
+      footerBg: "#581c87",
+      footerText: "#ffffff",
+      footerAccent: "#facc15",
+      headingFont: "luckiest",
+      priceFont: "anton",
+      mlFont: "baloo",
+    }),
+    content: c({
+      kicker: "LIMITED TIME",
+      headline: "COMBO",
+      headline2: "DHAMAKA",
+      headlineMl: "മെഗാ കോംബോ ഓഫറുകൾ",
+      subheadline: "Buy More • Save More!",
+      badgeText: "SUPER HIT",
+      heroImageUrl: "/poster-assets/heroes/mega-saver-hamper.png",
+      badgeMode: "smart",
+    }),
   },
 ];
 
@@ -618,7 +986,7 @@ export const FORMATS: Record<FormatKey, { label: string; hint: string; width: nu
   landscape: { label: "TV screen", hint: "Shop display 16:9", width: 1920, height: 1080, maxPerPage: 10 },
 };
 
-export const BASE_LAYOUT: PosterLayout = { format: "portrait", columns: 0, rows: 0, gap: 22, imageScale: 1, headerSize: 1 };
+export const BASE_LAYOUT: PosterLayout = { format: "portrait", columns: 0, rows: 0, gap: 22, imageScale: 1, headerSize: 1, heroFirst: false };
 
 export function defaultLayout(format: FormatKey = "portrait", template?: PosterTemplate): PosterLayout {
   return { ...BASE_LAYOUT, ...template?.layout, format };
@@ -636,6 +1004,8 @@ export const BASE_CONTENT: PosterContent = {
   heroImageUrl: "",
   heroEmoji: "",
   nameMode: "both",
+  badgeMode: "percent",
+  deliveryBadge: "",
   footerNote: "Offer valid while stocks last. Prices inclusive of taxes.",
   validFrom: "",
   validTo: "",
@@ -645,6 +1015,7 @@ export const BASE_CONTENT: PosterContent = {
   showContact: true,
   showValidity: true,
   showHero: true,
+  showQr: false,
 };
 
 export function defaultContent(template: PosterTemplate, today: string, validTo: string): PosterContent {
@@ -668,16 +1039,27 @@ export function normalizeStyle(style: Partial<PosterStyle>): PosterStyle {
   };
 }
 
-export function normalizeContent(content: Partial<PosterContent>): PosterContent {
-  return { ...BASE_CONTENT, ...content };
+export function normalizeContent(content: Partial<PosterContent>, templateId?: string): PosterContent {
+  const merged = { ...BASE_CONTENT, ...content };
+  const resolvedHero = resolveHeroImageUrl(merged, templateId);
+  return {
+    ...merged,
+    heroImageUrl: resolvedHero,
+    heroEmoji: "",
+  };
 }
 
 export function normalizeLayout(layout: Partial<PosterLayout>): PosterLayout {
   return { ...BASE_LAYOUT, ...layout };
 }
 
-export function normalizePoster<T extends { style: PosterStyle; content: PosterContent; layout: PosterLayout }>(poster: T): T {
-  return { ...poster, style: normalizeStyle(poster.style), content: normalizeContent(poster.content), layout: normalizeLayout(poster.layout) };
+export function normalizePoster<T extends { templateId?: string; style: PosterStyle; content: PosterContent; layout: PosterLayout }>(poster: T): T {
+  return {
+    ...poster,
+    style: normalizeStyle(poster.style),
+    content: normalizeContent(poster.content, poster.templateId),
+    layout: normalizeLayout(poster.layout),
+  };
 }
 
 /** A strong colour from the poster for web pages (header can be white or see-through). */

@@ -1,3 +1,4 @@
+import { resolveProductImageUrl } from "./keralaCatalogue";
 import type { PosterItem, Product, ResolvedItem } from "./types";
 
 const priceFormatter = new Intl.NumberFormat("en-IN", {
@@ -75,9 +76,10 @@ export function resolveItems(items: PosterItem[], products: Product[]): Resolved
       nameMl: item.nameMl?.trim() ?? product.nameMl,
       unit: item.unit?.trim() ?? product.unit,
       category: product.category,
-      imageUrl: product.imageUrl,
+      imageUrl: resolveProductImageUrl(product),
       normalPrice: item.normalPrice ?? product.normalPrice,
       offerPrice: item.offerPrice ?? product.offerPrice,
+      tag: item.tag?.trim() || undefined,
     });
   }
   return out;

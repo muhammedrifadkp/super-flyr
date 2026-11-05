@@ -403,6 +403,8 @@ function EditorInner({
         open={dialog === "export"}
         onClose={() => setDialog(null)}
         poster={poster}
+        store={store}
+        items={items}
         pages={pages}
         baseName={baseName}
         renderPages={renderPages}

@@ -1,6 +1,6 @@
 "use client";
 
-import useSWR from "swr";
+import useSWR, { type SWRConfiguration } from "swr";
 import type { Poster, Product, Store } from "../types";
 
 export class ApiError extends Error {
@@ -47,16 +47,16 @@ export const api = {
 
 const fetcher = <T>(url: string) => request<T>(url);
 
-export function useStore() {
-  return useSWR<Store>("/api/store", fetcher);
+export function useStore(config?: SWRConfiguration<Store>) {
+  return useSWR<Store>("/api/store", fetcher, config);
 }
 
-export function useProducts() {
-  return useSWR<Product[]>("/api/products", fetcher);
+export function useProducts(config?: SWRConfiguration<Product[]>) {
+  return useSWR<Product[]>("/api/products", fetcher, config);
 }
 
-export function usePosters() {
-  return useSWR<Poster[]>("/api/posters", fetcher);
+export function usePosters(config?: SWRConfiguration<Poster[]>) {
+  return useSWR<Poster[]>("/api/posters", fetcher, config);
 }
 
 export function usePoster(id: string | undefined) {

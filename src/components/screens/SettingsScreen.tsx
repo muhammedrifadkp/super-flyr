@@ -1,9 +1,10 @@
 "use client";
 
-import { Copy, ExternalLink } from "lucide-react";
+import { Copy, ExternalLink, Sparkles } from "lucide-react";
 import { useEffect, useState, type FormEvent } from "react";
 import { api, useStore } from "@/lib/client/api";
 import { useOrigin } from "@/lib/client/useOrigin";
+import { STORE_DEMO_PRESETS } from "@/lib/defaults";
 import type { BrandColors, Store } from "@/lib/types";
 import { ImageUploader, type PendingImage } from "../ImageUploader";
 import { useToast } from "../Toast";
@@ -85,6 +86,29 @@ function SettingsForm({ store, onSaved }: { store: Store; onSaved: (store: Store
     }
   }
 
+  async function applyPreset(preset: (typeof STORE_DEMO_PRESETS)[number]) {
+    const nextDraft: Draft = {
+      ...draft,
+      name: preset.name,
+      tagline: preset.tagline,
+      phone: preset.phone,
+      whatsapp: preset.whatsapp,
+      address: preset.address,
+      colors: preset.colors,
+    };
+    setDraft(nextDraft);
+    setSaving(true);
+    try {
+      const saved = await api.patch<Store>("/api/store", nextDraft);
+      toast.success(`Switched store to ${preset.name}!`);
+      onSaved(saved);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not apply preset.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const publicUrl = `${origin}/`;
 
   return (
@@ -100,6 +124,44 @@ function SettingsForm({ store, onSaved }: { store: Store; onSaved: (store: Store
       />
 
       <div className="space-y-6">
+        <Card className="space-y-3 border-emerald-200 bg-emerald-50/50 p-4">
+          <div className="flex items-center gap-2">
+            <Sparkles className="size-4 text-emerald-700" aria-hidden="true" />
+            <h2 className="text-sm font-bold text-emerald-950">1-Click Kerala Supermarket Presets</h2>
+          </div>
+          <p className="text-xs text-emerald-800">
+            Instantly load a sample Kerala supermarket profile with realistic contact info & brand colours.
+          </p>
+          <div className="grid gap-2 sm:grid-cols-3">
+            {STORE_DEMO_PRESETS.map((p) => {
+              const active = draft.name === p.name;
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  disabled={saving}
+                  onClick={() => void applyPreset(p)}
+                  className={
+                    active
+                      ? "flex flex-col items-start gap-1 rounded-xl bg-white p-3 text-left shadow-sm ring-2 ring-emerald-600"
+                      : "flex flex-col items-start gap-1 rounded-xl bg-white/90 p-3 text-left ring-1 ring-emerald-200 transition hover:bg-white hover:ring-emerald-400"
+                  }
+                >
+                  <div className="flex w-full items-center justify-between gap-2">
+                    <span className="truncate text-xs font-bold text-gray-950">{p.label}</span>
+                    <span className="flex -space-x-1" aria-hidden="true">
+                      {[p.colors.primary, p.colors.accent].map((c) => (
+                        <span key={c} className="size-3.5 rounded-full ring-1 ring-white" style={{ background: c }} />
+                      ))}
+                    </span>
+                  </div>
+                  <span className="line-clamp-1 text-[11px] text-gray-600">{p.address}</span>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+
         <Card className="grid gap-6 p-5 sm:grid-cols-[1fr_14rem]">
           <div className="space-y-4">
             <Field label="Store name" error={nameError ?? undefined}>

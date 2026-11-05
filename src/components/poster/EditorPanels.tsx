@@ -1,13 +1,25 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Check, ChevronDown, Package, Palette, Plus, RotateCcw, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, ExternalLink, Package, Palette, Plus, RotateCcw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { discountPercent, formatPrice, randomId } from "@/lib/format";
+import { resolveProductImageUrl } from "@/lib/keralaCatalogue";
 import { LATIN_FONT_KEYS, MALAYALAM_FONT_KEYS, POSTER_FONTS } from "@/lib/poster/fonts";
 import { api } from "@/lib/client/api";
-import { BASE_CONTENT, FORMATS, TEMPLATES, TEMPLATE_CATEGORIES, applyBrandColors, defaultLayout, isTransparent, type TemplateCategory } from "@/lib/poster/templates";
+import {
+  BASE_CONTENT,
+  FORMATS,
+  HERO_PRESETS,
+  TEMPLATES,
+  TEMPLATE_CATEGORIES,
+  applyBrandColors,
+  defaultLayout,
+  isTransparent,
+  resolveHeroImageUrl,
+  type TemplateCategory,
+} from "@/lib/poster/templates";
 import { FittedPoster } from "./PosterPreview";
-import type { FontKey, FormatKey, Poster, PosterItem, PosterStyle, Product, ResolvedItem, Store } from "@/lib/types";
+import type { BadgeMode, FontKey, FormatKey, Poster, PosterItem, PosterStyle, Product, ResolvedItem, Store } from "@/lib/types";
 import { ImageUploader, type PendingImage } from "../ImageUploader";
 import { Button, ColorInput, Field, IconButton, Input, Select, Switch, Textarea, cx } from "../ui";
 
@@ -197,7 +209,7 @@ export function ProductsPanel({
                         added ? "bg-brand-50 ring-brand-200" : "bg-white ring-gray-200 hover:ring-gray-300",
                       )}
                     >
-                      <Thumb url={product.imageUrl} />
+                      <Thumb url={resolveProductImageUrl(product)} />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-gray-900">{product.name}</span>
                         <span className="block truncate text-xs text-gray-600 tabular">
@@ -266,7 +278,13 @@ function PosterItemRow({
   useEffect(() => {
     if (open) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [open]);
-  const overridden = raw.name !== undefined || raw.nameMl !== undefined || raw.unit !== undefined || raw.normalPrice !== undefined || raw.offerPrice !== undefined;
+  const overridden =
+    raw.name !== undefined ||
+    raw.nameMl !== undefined ||
+    raw.unit !== undefined ||
+    raw.normalPrice !== undefined ||
+    raw.offerPrice !== undefined ||
+    Boolean(raw.tag);
   const discount = discountPercent(item.normalPrice, item.offerPrice);
 
   const num = (value: string) => {
@@ -346,11 +364,31 @@ function PosterItemRow({
                 size="sm"
                 variant="ghost"
                 icon={<RotateCcw className="size-4" />}
-                onClick={() => onPatch({ name: undefined, nameMl: undefined, unit: undefined, normalPrice: undefined, offerPrice: undefined })}
+                onClick={() => onPatch({ name: undefined, nameMl: undefined, unit: undefined, normalPrice: undefined, offerPrice: undefined, tag: undefined })}
               >
                 Use library values
               </Button>
             ) : null}
+          </div>
+          <div className="col-span-2 space-y-1.5">
+            <Field label="Special badge on this card" hint="Overrides the discount % badge (e.g. BUY 1 GET 1)">
+              {(p) => <Input {...p} value={raw.tag ?? ""} onChange={(e) => onPatch({ tag: e.target.value || undefined })} placeholder="Default (% or Save ₹)" maxLength={24} />}
+            </Field>
+            <div className="flex flex-wrap gap-1.5">
+              {["BUY 1 GET 1", "COMBO", "MEGA DEAL", "TODAY ONLY", ""].map((preset) => (
+                <button
+                  key={preset || "default"}
+                  type="button"
+                  onClick={() => onPatch({ tag: preset || undefined })}
+                  className={cx(
+                    "rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 transition-colors",
+                    (raw.tag ?? "") === preset ? "bg-brand-600 text-white ring-brand-600" : "bg-gray-50 text-gray-700 ring-gray-200 hover:bg-gray-100",
+                  )}
+                >
+                  {preset || "Default"}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       ) : null}
@@ -446,6 +484,12 @@ export function LayoutPanel({ poster, update, pages }: { poster: Poster; update:
           value={layout.headerSize}
           display={`${Math.round(layout.headerSize * 100)}%`}
           onChange={(headerSize) => setLayout({ headerSize })}
+        />
+        <Switch
+          checked={Boolean(layout.heroFirst)}
+          onChange={(heroFirst) => setLayout({ heroFirst })}
+          label="Highlight 1st product as Mega Deal"
+          description="Makes the first product 2 columns wide on page 1"
         />
       </Section>
       <Section title="Cards">
@@ -548,9 +592,11 @@ const COLOR_GROUPS: Array<{ title: string; fields: Array<{ key: keyof PosterStyl
 ];
 
 export function StylePanel({ poster, store, items, update }: { poster: Poster; store: Store; items: ResolvedItem[]; update: Update }) {
-  const { style } = poster;
+  const { style, content } = poster;
   const setStyle = (patch: Partial<PosterStyle>) => update({ style: { ...style, ...patch } });
+  const setContent = (patch: Partial<Poster["content"]>) => update({ content: { ...content, ...patch } });
   const [matchTexts, setMatchTexts] = useState(true);
+  const [showAllColors, setShowAllColors] = useState(false);
   const [category, setCategory] = useState<TemplateCategory | "all">("all");
   const templates = TEMPLATES.filter((t) => category === "all" || t.category === category);
 
@@ -603,14 +649,33 @@ export function StylePanel({ poster, store, items, update }: { poster: Poster; s
                   active ? "ring-2 ring-brand-600" : "ring-gray-200 hover:ring-gray-300",
                 )}
               >
-                <span className="block bg-gray-100 p-1.5" aria-hidden="true">
+                <span className="relative block bg-gray-100 p-1.5" aria-hidden="true">
                   <TemplateThumb template={t} store={store} items={items} format={poster.layout.format} />
+                  {t.canvaUrl ? (
+                    <span className="absolute right-2 top-2 rounded-full bg-violet-700/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
+                      Canva
+                    </span>
+                  ) : null}
                 </span>
                 <span className="block truncate px-2 py-1.5 text-xs font-medium text-gray-900">{t.name}</span>
               </button>
             );
           })}
         </div>
+        {(() => {
+          const activeTpl = TEMPLATES.find((t) => t.id === poster.templateId);
+          return activeTpl?.canvaUrl ? (
+            <a
+              href={activeTpl.canvaUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 ring-1 ring-violet-200 transition-colors hover:bg-violet-100"
+            >
+              <ExternalLink className="size-3.5" aria-hidden="true" />
+              <span>Open & Edit “{activeTpl.name}” in Canva</span>
+            </a>
+          ) : null;
+        })()}
         <Switch checked={matchTexts} onChange={setMatchTexts} label="Also use the template’s texts & grid" description="Turn off to keep your headline and layout." />
         <Button size="sm" className="w-full" icon={<Palette className="size-4" />} onClick={() => update({ style: applyBrandColors(style, store.colors) })}>
           Use my brand colours
@@ -710,6 +775,18 @@ export function StylePanel({ poster, store, items, update }: { poster: Poster; s
             ]}
             onChange={(badgePosition) => setStyle({ badgePosition })}
           />
+          <Choice<BadgeMode>
+            label="Discount badge text"
+            value={content.badgeMode ?? "percent"}
+            options={[
+              ["percent", "Percentage (e.g. 25% OFF)"],
+              ["save", "Rupee savings (e.g. SAVE ₹45)"],
+              ["smart", "Smart (Save ₹ if ≥ ₹25, else %)"],
+              ["bogo", "Buy 1 Get 1 Free (BOGO)"],
+            ]}
+            onChange={(badgeMode) => setContent({ badgeMode })}
+            className="col-span-2"
+          />
           <Choice
             label="Name position"
             value={style.namePosition}
@@ -738,16 +815,53 @@ export function StylePanel({ poster, store, items, update }: { poster: Poster; s
       </Section>
 
       <Section title="Colours">
-        <div className="space-y-4">
-          {COLOR_GROUPS.map((group) => (
-            <div key={group.title} className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{group.title}</p>
-              {group.fields.map(({ key, label }) => (
-                <ColorInput key={key} label={label} value={String(style[key])} onChange={(v) => setStyle({ [key]: v } as Partial<PosterStyle>)} />
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { name: "Store Brand", colors: store.colors },
+              { name: "Supermarket Red", colors: { primary: "#d71920", secondary: "#fff4d6", accent: "#ffcc00" } },
+              { name: "Fresh Veg Green", colors: { primary: "#15803d", secondary: "#ecfdf5", accent: "#facc15" } },
+              { name: "Royal Blue", colors: { primary: "#1e3a8a", secondary: "#eff6ff", accent: "#facc15" } },
+              { name: "Kasavu Gold", colors: { primary: "#7a1616", secondary: "#fffaf0", accent: "#c9a227" } },
+              { name: "Ramzan Emerald", colors: { primary: "#047857", secondary: "#ecfdf5", accent: "#fde047" } },
+            ].map((preset) => (
+              <button
+                key={preset.name}
+                type="button"
+                onClick={() => update({ style: applyBrandColors(style, preset.colors) })}
+                className="flex items-center gap-2 rounded-lg bg-white p-2 text-left text-xs font-medium text-gray-800 ring-1 ring-gray-200 hover:ring-gray-300"
+              >
+                <span className="flex -space-x-1" aria-hidden="true">
+                  {[preset.colors.primary, preset.colors.secondary, preset.colors.accent].map((c, idx) => (
+                    <span key={idx} className="size-4 rounded-full ring-1 ring-black/10" style={{ background: c }} />
+                  ))}
+                </span>
+                <span className="truncate">{preset.name}</span>
+              </button>
+            ))}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowAllColors((v) => !v)}
+            aria-expanded={showAllColors}
+            className="flex w-full items-center justify-between rounded-lg bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-700 ring-1 ring-gray-200 hover:bg-gray-100"
+          >
+            <span>{showAllColors ? "Hide detailed colour pickers" : "Customize individual colours (20)"}</span>
+            <ChevronDown className={cx("size-4 transition-transform", showAllColors && "rotate-180")} />
+          </button>
+          {showAllColors ? (
+            <div className="space-y-4 pt-2">
+              {COLOR_GROUPS.map((group) => (
+                <div key={group.title} className="space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">{group.title}</p>
+                  {group.fields.map(({ key, label }) => (
+                    <ColorInput key={key} label={label} value={String(style[key])} onChange={(v) => setStyle({ [key]: v } as Partial<PosterStyle>)} />
+                  ))}
+                </div>
               ))}
+              {isTransparent(style.headerBg) ? <p className="text-xs text-gray-500">Header colour is see-through in this template. Pick a colour to add a header panel.</p> : null}
             </div>
-          ))}
-          {isTransparent(style.headerBg) ? <p className="text-xs text-gray-500">Header colour is see-through in this template. Pick a colour to add a header panel.</p> : null}
+          ) : null}
         </div>
       </Section>
 
@@ -779,19 +893,18 @@ function FontSelect({ label, value, options, onChange }: { label: string; value:
 
 // ---------------- Text ----------------
 
-const HERO_EMOJI = ["🛒", "🧺", "🛍️", "🥦", "🍎", "🍉", "🥭", "🌼", "🪔", "🎉", "🐟", "🍗"];
-
 export function TextPanel({ poster, update }: { poster: Poster; update: Update }) {
   const { content } = poster;
   const set = (patch: Partial<Poster["content"]>) => update({ content: { ...content, ...patch } });
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [heroKey, setHeroKey] = useState(0);
+  const activeHeroUrl = resolveHeroImageUrl(content, poster.templateId);
 
   async function uploadHero(image: PendingImage | null | "remove") {
     if (image === null) return;
     if (image === "remove") {
-      set({ heroImageUrl: "" });
+      set({ heroImageUrl: "", heroEmoji: "" });
       return;
     }
     setUploading(true);
@@ -852,33 +965,32 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
         </div>
       </Section>
 
-      <Section title="Header picture">
-        <Switch checked={content.showHero} onChange={(showHero) => set({ showHero })} label="Show header picture" description="Used by the circle, stacked and split headers" />
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Quick pictures">
-          {HERO_EMOJI.map((emoji) => (
-            <button
-              key={emoji}
-              type="button"
-              aria-pressed={!content.heroImageUrl && content.heroEmoji === emoji}
-              onClick={() => set({ heroEmoji: emoji, heroImageUrl: "" })}
-              className={cx(
-                "flex size-10 items-center justify-center rounded-lg text-xl ring-1",
-                !content.heroImageUrl && content.heroEmoji === emoji ? "bg-brand-50 ring-2 ring-brand-600" : "bg-white ring-gray-200 hover:ring-gray-300",
-              )}
-            >
-              <span aria-hidden="true">{emoji}</span>
-              <span className="sr-only">Use {emoji}</span>
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => set({ heroEmoji: "", heroImageUrl: "" })}
-            className="h-10 rounded-lg px-3 text-xs font-medium text-gray-700 ring-1 ring-gray-200 hover:ring-gray-300"
-          >
-            None
-          </button>
+      <Section title="Header studio artwork">
+        <Switch checked={content.showHero} onChange={(showHero) => set({ showHero })} label="Show header artwork" description="High-res studio cutout in circle, stacked and split headers" />
+        <div className="grid grid-cols-2 gap-2" role="group" aria-label="Studio header artworks">
+          {HERO_PRESETS.map((preset) => {
+            const isSelected = content.showHero && activeHeroUrl === preset.url;
+            return (
+              <button
+                key={preset.id}
+                type="button"
+                aria-pressed={isSelected}
+                onClick={() => set({ showHero: true, heroImageUrl: preset.url, heroEmoji: "" })}
+                className={cx(
+                  "flex items-center gap-2 rounded-lg p-1.5 text-left ring-1 transition-colors",
+                  isSelected ? "bg-brand-50 ring-2 ring-brand-600" : "bg-white ring-gray-200 hover:ring-gray-300",
+                )}
+              >
+                <span className="checkerboard flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md ring-1 ring-gray-200/80">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={preset.url} alt="" width={40} height={40} loading="lazy" className="size-full object-contain p-0.5" />
+                </span>
+                <span className="truncate text-xs font-medium text-gray-800">{preset.label}</span>
+              </button>
+            );
+          })}
         </div>
-        <ImageUploader key={heroKey} label="Or upload your own (basket, store photo, Maveli…)" currentUrl={content.heroImageUrl} onChange={uploadHero} />
+        <ImageUploader key={heroKey} label="Or upload your own custom PNG / store photo…" currentUrl={content.heroImageUrl} onChange={uploadHero} />
         {uploading ? <p className="text-xs text-gray-600" aria-live="polite">Uploading…</p> : null}
         {uploadError ? <p className="text-xs text-red-600" aria-live="polite">{uploadError}</p> : null}
       </Section>
@@ -922,7 +1034,25 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
         <p className="text-xs text-gray-500">Products without a Malayalam name show the English name.</p>
       </Section>
 
-      <Section title="Footer">
+      <Section title="Footer & Highlights">
+        <Field label="Delivery / Highlight stamp" hint="Shown in the date strip under the header">
+          {(p) => <Input {...p} value={content.deliveryBadge ?? ""} onChange={(e) => set({ deliveryBadge: e.target.value })} placeholder="e.g. 🛵 Free Home Delivery…" maxLength={40} />}
+        </Field>
+        <div className="flex flex-wrap gap-1.5">
+          {["🛵 Free Home Delivery", "📱 WhatsApp Order", "✨ 100% Fresh & Halal", "💳 UPI Accepted", ""].map((stamp) => (
+            <button
+              key={stamp || "none"}
+              type="button"
+              onClick={() => set({ deliveryBadge: stamp })}
+              className={cx(
+                "rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 transition-colors",
+                (content.deliveryBadge ?? "") === stamp ? "bg-brand-600 text-white ring-brand-600" : "bg-gray-50 text-gray-700 ring-gray-200 hover:bg-gray-100",
+              )}
+            >
+              {stamp || "None"}
+            </button>
+          ))}
+        </div>
         <Field label="Footer note">
           {(p) => (
             <Textarea
@@ -936,6 +1066,12 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
           )}
         </Field>
         <Switch checked={content.showContact} onChange={(showContact) => set({ showContact })} label="Show phone & address" description="From Branding settings" />
+        <Switch
+          checked={Boolean(content.showQr)}
+          onChange={(showQr) => set({ showQr })}
+          label="Show QR code on poster"
+          description="Customers scan to open offers & order on WhatsApp"
+        />
       </Section>
 
       <Section title="Show on cards">
@@ -962,6 +1098,7 @@ function TemplateThumb({
   const poster = useMemo(
     () => ({
       id: template.id,
+      templateId: template.id,
       layout: defaultLayout(format, template),
       style: template.brand ? applyBrandColors(template.style, store.colors) : template.style,
       content: { ...BASE_CONTENT, ...template.content, validFrom: "", validTo: "" },

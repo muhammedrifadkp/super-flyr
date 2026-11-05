@@ -1,29 +1,33 @@
 "use client";
 
-import { Copy, ExternalLink, FileImage, FileText, Image as ImageIcon, MessageCircle, Printer, Share2 } from "lucide-react";
+import { Copy, ExternalLink, FileImage, FileText, Image as ImageIcon, MessageCircle, Printer, Share2, Tag, Tv } from "lucide-react";
 import { useState } from "react";
-import { buildPdf, downloadBlob, downloadImages, maxPixelRatio, printPages, sharePages } from "@/lib/client/export";
+import { buildPdf, downloadBlob, downloadImages, maxPixelRatio, printPages, renderShelfTagPages, sharePages } from "@/lib/client/export";
 import { useCanShareFiles, useOrigin } from "@/lib/client/useOrigin";
+import { formatValidity } from "@/lib/format";
 import { FORMATS } from "@/lib/poster/templates";
-import type { Poster } from "@/lib/types";
+import type { Poster, ResolvedItem, Store } from "@/lib/types";
 import { Dialog } from "../Dialog";
 import { useToast } from "../Toast";
 import { Button, Switch, cx } from "../ui";
 
 type RenderPages = (options: { pixelRatio: number; mime: "image/png" | "image/jpeg"; quality?: number }) => Promise<string[]>;
-type Kind = "png" | "jpg" | "pdf" | "print";
+type Kind = "png" | "jpg" | "pdf" | "print" | "tags";
 
 const KINDS: Array<{ id: Kind; label: string; hint: string; icon: typeof FileImage }> = [
   { id: "png", label: "PNG", hint: "Best quality", icon: FileImage },
   { id: "jpg", label: "JPG", hint: "Smaller, for WhatsApp", icon: ImageIcon },
   { id: "pdf", label: "PDF", hint: "Print shop / email", icon: FileText },
-  { id: "print", label: "Print", hint: "Print now", icon: Printer },
+  { id: "print", label: "Print", hint: "Print poster now", icon: Printer },
+  { id: "tags", label: "Shelf Tags", hint: "A4 rack price cards", icon: Tag },
 ];
 
 export function ExportDialog({
   open,
   onClose,
   poster,
+  store,
+  items,
   pages,
   baseName,
   renderPages,
@@ -32,6 +36,8 @@ export function ExportDialog({
   open: boolean;
   onClose: () => void;
   poster: Poster;
+  store: Store;
+  items: ResolvedItem[];
   pages: number;
   baseName: string;
   renderPages: RenderPages;
@@ -50,9 +56,22 @@ export function ExportDialog({
     { value: Math.min(3, maxRatio), label: "Print" },
   ];
 
-  async function run() {
+  async function run(printTags = false) {
     setBusy(true);
     try {
+      if (kind === "tags") {
+        const validity = formatValidity(poster.content.validFrom, poster.content.validTo);
+        const tagUrls = await renderShelfTagPages(items, store, validity);
+        if (printTags) {
+          printPages(tagUrls, "a4");
+        } else {
+          const pdfBlob = await buildPdf(tagUrls, "a4", 1654, 2339);
+          downloadBlob(pdfBlob, `${baseName}-shelf-tags.pdf`);
+          toast.success(`Shelf tags PDF (${items.length} products) downloaded.`);
+        }
+        onClose();
+        return;
+      }
       const pixelRatio = Math.min(ratio, maxRatio);
       const mime = kind === "png" ? "image/png" : "image/jpeg";
       const urls = await renderPages({ pixelRatio, mime, quality: kind === "jpg" ? 0.9 : 0.95 });
@@ -73,18 +92,28 @@ export function ExportDialog({
     }
   }
 
-  const actionLabel = kind === "print" ? "Print" : `Download ${kind.toUpperCase()}`;
+  const actionLabel =
+    kind === "print"
+      ? "Print poster"
+      : kind === "tags"
+        ? "Download Shelf Tags PDF"
+        : `Download ${kind.toUpperCase()}`;
 
   return (
     <Dialog
       open={open}
       onClose={onClose}
-      title="Download poster"
-      description={pages > 1 ? `${pages} pages will be exported.` : undefined}
+      title="Download & Print"
+      description={pages > 1 && kind !== "tags" ? `${pages} pages will be exported.` : undefined}
       footer={
         <>
           <Button onClick={onClose}>Cancel</Button>
-          <Button variant="primary" onClick={run} loading={busy} disabled={empty}>
+          {kind === "tags" ? (
+            <Button icon={<Printer className="size-4" />} onClick={() => void run(true)} loading={busy} disabled={empty}>
+              Print Tags
+            </Button>
+          ) : null}
+          <Button variant="primary" onClick={() => void run(false)} loading={busy} disabled={empty}>
             {actionLabel}
           </Button>
         </>
@@ -93,8 +122,8 @@ export function ExportDialog({
       <div className="space-y-5">
         {empty ? <p className="rounded-lg bg-amber-50 p-3 text-sm text-amber-900">Add at least one product before downloading.</p> : null}
         <fieldset>
-          <legend className="mb-2 text-sm font-medium text-gray-800">File type</legend>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <legend className="mb-2 text-sm font-medium text-gray-800">Export format</legend>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
             {KINDS.map(({ id, label, hint, icon: Icon }) => (
               <label
                 key={id}
@@ -111,26 +140,35 @@ export function ExportDialog({
             ))}
           </div>
         </fieldset>
-        <fieldset>
-          <legend className="mb-2 text-sm font-medium text-gray-800">Quality</legend>
-          <div className="grid grid-cols-3 gap-2">
-            {qualities.map((q) => (
-              <label
-                key={q.label}
-                className={cx(
-                  "flex cursor-pointer flex-col items-center rounded-xl p-2.5 ring-1 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-brand-600",
-                  ratio === q.value ? "bg-brand-50 ring-2 ring-brand-600" : "ring-gray-200 hover:ring-gray-300",
-                )}
-              >
-                <input type="radio" name="quality" checked={ratio === q.value} onChange={() => setRatio(q.value)} className="sr-only" />
-                <span className="text-sm font-semibold">{q.label}</span>
-                <span className="text-[11px] text-gray-500 tabular">
-                  {Math.round(format.width * q.value)}×{Math.round(format.height * q.value)}
-                </span>
-              </label>
-            ))}
+        {kind === "tags" ? (
+          <div className="rounded-xl bg-brand-50/70 p-3.5 text-sm text-gray-800 ring-1 ring-brand-200">
+            <p className="font-semibold text-brand-900">A4 Supermarket Rack Price Tags ({items.length} cards)</p>
+            <p className="mt-1 text-xs text-gray-600">
+              Generates printable A4 sheets (8 cut-out shelf talkers per page) with your store header, Malayalam + English product names, struck-through MRP, and bold Offer Price.
+            </p>
           </div>
-        </fieldset>
+        ) : (
+          <fieldset>
+            <legend className="mb-2 text-sm font-medium text-gray-800">Quality</legend>
+            <div className="grid grid-cols-3 gap-2">
+              {qualities.map((q) => (
+                <label
+                  key={q.label}
+                  className={cx(
+                    "flex cursor-pointer flex-col items-center rounded-xl p-2.5 ring-1 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-brand-600",
+                    ratio === q.value ? "bg-brand-50 ring-2 ring-brand-600" : "ring-gray-200 hover:ring-gray-300",
+                  )}
+                >
+                  <input type="radio" name="quality" checked={ratio === q.value} onChange={() => setRatio(q.value)} className="sr-only" />
+                  <span className="text-sm font-semibold">{q.label}</span>
+                  <span className="text-[11px] text-gray-500 tabular">
+                    {Math.round(format.width * q.value)}×{Math.round(format.height * q.value)}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+        )}
       </div>
     </Dialog>
   );
@@ -158,13 +196,13 @@ export function ShareDialog({
   const [sharing, setSharing] = useState(false);
 
   const url = `${origin}/o/${poster.slug}`;
-  const message = `${poster.content.headline || poster.title} – see today's offers: ${url}`;
+  const message = `${poster.content.headline || poster.title} – see today's offers & order on WhatsApp: ${url}`;
 
   async function togglePublish(next: boolean) {
     setPublishing(true);
     try {
       await onPublish(next);
-      toast.success(next ? "Published. Customers can open the link now." : "Unpublished. The link is hidden.");
+      toast.success(next ? "Published. Customers can open the link & order on WhatsApp now." : "Unpublished. The link is hidden.");
     } finally {
       setPublishing(false);
     }
@@ -184,14 +222,14 @@ export function ShareDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} title="Share offers" footer={<Button onClick={onClose}>Done</Button>}>
+    <Dialog open={open} onClose={onClose} title="Share & Publish Offers" footer={<Button onClick={onClose}>Done</Button>}>
       <div className="space-y-5">
         <div className="rounded-xl bg-gray-50 p-3 ring-1 ring-gray-200">
           <Switch
             checked={poster.published}
             onChange={togglePublish}
-            label={publishing ? "Updating…" : "Public offer page"}
-            description="Customers see these offers on a web page, without the app."
+            label={publishing ? "Updating…" : "Public offer & WhatsApp ordering page"}
+            description="Customers can view offers, add items to cart, and send their order directly to your WhatsApp!"
           />
         </div>
 
@@ -211,27 +249,35 @@ export function ShareDialog({
                 Copy
               </Button>
             </div>
-            <div className="grid gap-2 sm:grid-cols-2">
+            <div className="grid gap-2 sm:grid-cols-3">
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(message)}`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#1fa855] px-4 text-sm font-medium text-white hover:bg-[#178a45]"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-[#1fa855] px-3 text-sm font-medium text-white hover:bg-[#178a45]"
               >
-                <MessageCircle className="size-4" aria-hidden="true" /> Send link on WhatsApp
+                <MessageCircle className="size-4" aria-hidden="true" /> WhatsApp Link
               </a>
               <a
                 href={`/o/${poster.slug}`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium text-gray-900 ring-1 ring-gray-300 hover:bg-gray-50"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-gray-900 ring-1 ring-gray-300 hover:bg-gray-50"
               >
-                <ExternalLink className="size-4" aria-hidden="true" /> Open offer page
+                <ExternalLink className="size-4" aria-hidden="true" /> Offer Page
+              </a>
+              <a
+                href="/tv"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-gray-900 ring-1 ring-gray-300 hover:bg-gray-50"
+              >
+                <Tv className="size-4" aria-hidden="true" /> Smart TV Mode
               </a>
             </div>
           </div>
         ) : (
-          <p className="text-sm text-gray-600">Turn on the public page to get a link you can send to customers.</p>
+          <p className="text-sm text-gray-600">Turn on the public page to get a link you can send to customers and show on your shop Smart TV.</p>
         )}
 
         <div className="border-t border-gray-100 pt-4">

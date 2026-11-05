@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { connection } from "next/server";
 import { Suspense } from "react";
+import { OfferCountdown } from "@/components/public/InteractiveCatalog";
 import { ContactBar, PoweredBy, ProductGrid, StoreHero } from "@/components/public/PublicParts";
 import { getRepo } from "@/lib/db";
 import { formatValidity, isExpired, resolveItems } from "@/lib/format";
@@ -45,7 +46,7 @@ async function StoreOffers() {
         <div className="mx-auto max-w-5xl px-4 pb-6">
           <h1 className="text-3xl font-black tracking-tight sm:text-4xl">Today’s offers</h1>
           <p lang="ml" className="font-ml text-lg font-semibold opacity-90">
-            ഇന്നത്തെ ഓഫറുകൾ
+            ഇന്നത്തെ ഓഫറുകൾ • Tap any offer to order on WhatsApp
           </p>
         </div>
       </StoreHero>
@@ -72,21 +73,25 @@ async function StoreOffers() {
                       </p>
                     ) : null}
                   </div>
-                  {validity ? (
-                    <span
-                      className="rounded-full px-3 py-1 text-xs font-semibold"
-                      style={{ background: poster.style.badgeBg, color: readableOn(poster.style.badgeBg) }}
-                    >
-                      {validity}
-                    </span>
-                  ) : null}
+                  <div className="flex flex-wrap items-center gap-2">
+                    {validity ? (
+                      <span
+                        className="rounded-full px-3 py-1 text-xs font-semibold"
+                        style={{ background: poster.style.badgeBg, color: readableOn(poster.style.badgeBg) }}
+                      >
+                        {validity}
+                      </span>
+                    ) : null}
+                    {poster.content.validTo ? <OfferCountdown validTo={poster.content.validTo} /> : null}
+                  </div>
                 </div>
                 <ProductGrid items={items.slice(0, 8)} priceColor={poster.style.priceBg} badgeColor={poster.style.badgeBg} />
                 <Link
                   href={`/o/${poster.slug}`}
-                  className="mt-3 inline-flex h-11 items-center gap-1.5 rounded-xl px-4 text-sm font-semibold ring-1 ring-gray-300 hover:bg-white"
+                  className="mt-3 inline-flex h-11 items-center gap-1.5 rounded-xl bg-emerald-600 px-4 text-sm font-bold text-white shadow-sm hover:bg-emerald-700"
                 >
-                  {items.length > 8 ? `See all ${items.length} offers` : "Open this offer"} <ArrowRight className="size-4" aria-hidden="true" />
+                  {items.length > 8 ? `See all ${items.length} items & Order on WhatsApp` : "Open & Order on WhatsApp"}{" "}
+                  <ArrowRight className="size-4" aria-hidden="true" />
                 </Link>
               </section>
             );
@@ -95,11 +100,6 @@ async function StoreOffers() {
       </main>
 
       <ContactBar store={store} color={color} message={`Hi ${store.name}, I saw your offers.`} />
-      <div className="text-center">
-        <Link href="/dashboard" className="text-xs text-gray-400 hover:text-gray-600">
-          Staff login
-        </Link>
-      </div>
       <PoweredBy />
     </div>
   );

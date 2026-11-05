@@ -7,11 +7,12 @@ import { getLoadedImage, useImages } from "@/lib/client/imageCache";
 import { discountPercent, formatPrice, formatValidity } from "@/lib/format";
 import { fontFamily, fontWeight, loadPosterFonts, stack } from "@/lib/poster/fonts";
 import { cellsFor, contactText, pageItems, posterGeometry, seededRandom, type Box, type PosterGeometry } from "@/lib/poster/layout";
-import { isTransparent, mix, normalizeContent, normalizeLayout, normalizeStyle, readableOn } from "@/lib/poster/templates";
+import { encodeQrMatrix } from "@/lib/poster/qr";
+import { isTransparent, mix, normalizeContent, normalizeLayout, normalizeStyle, readableOn, resolveHeroImageUrl } from "@/lib/poster/templates";
 import type { FontKey, Poster, PosterContent, PosterStyle, ResolvedItem, Store } from "@/lib/types";
 
 export interface PosterCanvasProps {
-  poster: Pick<Poster, "id" | "layout" | "style" | "content">;
+  poster: Pick<Poster, "id" | "layout" | "style" | "content"> & { templateId?: string; slug?: string };
   store: Store;
   items: ResolvedItem[];
   page: number;
@@ -25,7 +26,7 @@ export interface PosterCanvasProps {
   onReady?: () => void;
 }
 
-const EMOJI_FONT = '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
+const MARIGOLD_GARLAND_URL = "/poster-assets/heroes/marigold-cluster.png";
 
 // ---------- text helpers ----------
 
@@ -85,6 +86,7 @@ interface Ctx {
   fonts: Fonts;
   validity: string;
   seed: string;
+  qrUrl: string;
 }
 
 // ---------- main component ----------
@@ -102,7 +104,7 @@ export default function PosterCanvas({
   onReady,
 }: PosterCanvasProps) {
   const style = useMemo(() => normalizeStyle(poster.style), [poster.style]);
-  const content = useMemo(() => normalizeContent(poster.content), [poster.content]);
+  const content = useMemo(() => normalizeContent(poster.content, poster.templateId), [poster.content, poster.templateId]);
   const layout = useMemo(() => normalizeLayout(poster.layout), [poster.layout]);
 
   const fontKeys = useMemo<FontKey[]>(
@@ -125,16 +127,19 @@ export default function PosterCanvas({
   const geo = posterGeometry({ layout, content, style }, store, items.length);
   const safePage = Math.min(page, geo.pages - 1);
   const visible = pageItems(items, geo, safePage);
-  const cells = cellsFor(geo, visible.length);
+  const cells = cellsFor(geo, visible.length, safePage);
+
+  const resolvedHeroUrl = useMemo(() => resolveHeroImageUrl(content, poster.templateId), [content, poster.templateId]);
 
   const imageUrls = useMemo(
     () =>
       [
         ...visible.map((i) => i.imageUrl),
         content.showLogo ? store.logoUrl : "",
-        content.showHero ? content.heroImageUrl : "",
+        content.showHero ? resolvedHeroUrl : "",
+        style.decoration === "flowers" ? MARIGOLD_GARLAND_URL : "",
       ].filter(Boolean),
-    [visible, content.showLogo, content.showHero, content.heroImageUrl, store.logoUrl],
+    [visible, content.showLogo, content.showHero, resolvedHeroUrl, store.logoUrl, style.decoration],
   );
   const imagesReady = useImages(imageUrls);
   const fontsReady = loadedFonts === fontsKey;
@@ -149,6 +154,12 @@ export default function PosterCanvas({
 
   const scale = displayWidth / geo.width;
   const fonts = resolveFonts(style);
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://offers.store";
+  const qrUrl = poster.slug
+    ? `${origin}/o/${poster.slug}`
+    : store.whatsapp.replace(/\D/g, "")
+      ? `https://wa.me/${store.whatsapp.replace(/\D/g, "")}`
+      : origin;
   const ctx: Ctx = {
     geo,
     style,
@@ -157,6 +168,7 @@ export default function PosterCanvas({
     fonts,
     validity: content.showValidity ? formatValidity(content.validFrom, content.validTo) : "",
     seed: poster.id,
+    qrUrl,
   };
   // Fonts change text metrics, so remount the layer once they are loaded.
   const layerKey = `${fontsKey}:${fontsReady ? 1 : 0}`;
@@ -223,37 +235,84 @@ function TitleText({
   depthColor?: string;
 }) {
   if (!text) return null;
-  const shade = depthColor ?? mix(fill, "#000000", 0.55);
-  const extra = depth
-    ? {
-        stroke: shade,
-        strokeWidth: size * 0.1,
-        fillAfterStrokeEnabled: true,
-        lineJoin: "round" as const,
-        shadowColor: shade,
-        shadowOffsetX: size * 0.02,
-        shadowOffsetY: size * 0.07,
-        shadowBlur: 0,
-        shadowOpacity: 1,
-      }
-    : {};
+  const shade = depthColor ?? mix(fill, "#000000", 0.62);
+  const deepShade = mix(shade, "#000000", 0.35);
+  if (!depth) {
+    return (
+      <Text
+        x={x}
+        y={y}
+        width={width}
+        align={align}
+        text={text}
+        fontFamily={family}
+        fontStyle={weight}
+        fontSize={size}
+        lineHeight={1.05}
+        fill={fill}
+        wrap="none"
+        ellipsis
+        listening={false}
+      />
+    );
+  }
   return (
-    <Text
-      x={x}
-      y={y}
-      width={width}
-      align={align}
-      text={text}
-      fontFamily={family}
-      fontStyle={weight}
-      fontSize={size}
-      lineHeight={1.05}
-      fill={fill}
-      wrap="none"
-      ellipsis
-      listening={false}
-      {...extra}
-    />
+    <Group listening={false}>
+      <Text
+        x={x + size * 0.032}
+        y={y + size * 0.082}
+        width={width}
+        align={align}
+        text={text}
+        fontFamily={family}
+        fontStyle={weight}
+        fontSize={size}
+        lineHeight={1.05}
+        fill={deepShade}
+        stroke={deepShade}
+        strokeWidth={size * 0.11}
+        fillAfterStrokeEnabled
+        lineJoin="round"
+        wrap="none"
+        ellipsis
+      />
+      <Text
+        x={x + size * 0.016}
+        y={y + size * 0.042}
+        width={width}
+        align={align}
+        text={text}
+        fontFamily={family}
+        fontStyle={weight}
+        fontSize={size}
+        lineHeight={1.05}
+        fill={shade}
+        stroke={shade}
+        strokeWidth={size * 0.1}
+        fillAfterStrokeEnabled
+        lineJoin="round"
+        wrap="none"
+        ellipsis
+      />
+      <Text
+        x={x}
+        y={y}
+        width={width}
+        align={align}
+        text={text}
+        fontFamily={family}
+        fontStyle={weight}
+        fontSize={size}
+        lineHeight={1.05}
+        fill={fill}
+        stroke={shade}
+        strokeWidth={size * 0.08}
+        fillAfterStrokeEnabled
+        lineJoin="round"
+        wrap="none"
+        ellipsis
+      />
+    </Group>
   );
 }
 
@@ -377,31 +436,62 @@ function LogoBox({
   );
 }
 
-function Hero({ ctx, x, y, w, h }: { ctx: Ctx; x: number; y: number; w: number; h: number }) {
-  const { content } = ctx;
+function Hero({ ctx, x, y, w, h, splashColor }: { ctx: Ctx; x: number; y: number; w: number; h: number; splashColor?: string }) {
+  const { content, geo, style } = ctx;
   if (!content.showHero) return null;
-  const image = content.heroImageUrl ? getLoadedImage(content.heroImageUrl) : null;
-  if (image) return <ContainImage image={image} x={x} y={y} w={w} h={h} alignBottom />;
-  if (!content.heroEmoji) return null;
-  // No fixed width: Konva drops a glyph wider than its box, and emoji are wider than their font size.
-  const size = Math.min(w / 1.25, h * 0.88);
-  const glyphW = measure(content.heroEmoji, size, EMOJI_FONT, "normal") || size;
+  const heroUrl = resolveHeroImageUrl(content);
+  const image = heroUrl ? getLoadedImage(heroUrl) : null;
+  if (!image) return null;
+  const s = Math.min(w / image.naturalWidth, h / image.naturalHeight);
+  const iw = image.naturalWidth * s;
+  const ih = image.naturalHeight * s;
+  const ix = x + (w - iw) / 2;
+  const iy = y + h - ih;
+  const cx = ix + iw / 2;
+  const cy = iy + ih * 0.56;
+  const glowR = Math.min(iw, ih) * 0.48;
+  const glowTint = splashColor ?? style.panelBg;
   return (
-    <Text
-      x={x + (w - glyphW) / 2}
-      y={y + (h - size) / 2}
-      text={content.heroEmoji}
-      fontFamily={EMOJI_FONT}
-      fill="#000000"
-      fontSize={size}
-      lineHeight={1}
-      listening={false}
-    />
+    <Group listening={false}>
+      <Circle
+        x={cx}
+        y={cy}
+        radius={glowR}
+        fillRadialGradientStartPoint={{ x: 0, y: 0 }}
+        fillRadialGradientEndPoint={{ x: 0, y: 0 }}
+        fillRadialGradientStartRadius={0}
+        fillRadialGradientEndRadius={glowR}
+        fillRadialGradientColorStops={[0, glowTint, 0.68, glowTint, 1, "rgba(255,255,255,0)"]}
+        opacity={0.38}
+      />
+      <Ellipse
+        x={cx}
+        y={iy + ih - 4 * geo.u}
+        radiusX={iw * 0.38}
+        radiusY={Math.max(6 * geo.u, ih * 0.055)}
+        fillRadialGradientStartPoint={{ x: 0, y: 0 }}
+        fillRadialGradientEndPoint={{ x: 0, y: 0 }}
+        fillRadialGradientStartRadius={0}
+        fillRadialGradientEndRadius={iw * 0.38}
+        fillRadialGradientColorStops={[0, "rgba(0,0,0,0.34)", 0.6, "rgba(0,0,0,0.14)", 1, "rgba(0,0,0,0)"]}
+      />
+      <KonvaImage
+        image={image}
+        x={ix}
+        y={iy}
+        width={iw}
+        height={ih}
+        shadowColor="#000000"
+        shadowBlur={14 * geo.u}
+        shadowOpacity={0.22}
+        shadowOffsetY={4 * geo.u}
+      />
+    </Group>
   );
 }
 
 function hasHero(content: PosterContent) {
-  return content.showHero && Boolean(content.heroImageUrl || content.heroEmoji);
+  return content.showHero && Boolean(resolveHeroImageUrl(content));
 }
 
 function Sticker({ ctx, cx, cy, size }: { ctx: Ctx; cx: number; cy: number; size: number }) {
@@ -823,6 +913,16 @@ function SplitHeader({ ctx }: { ctx: Ctx }) {
       <TitleText text={content.headlineMl} x={pad} y={yMl} width={leftW} align="left" size={mlSize} family={fonts.ml} weight={fonts.mlBold} fill={style.headerText} />
       <TitleText text={content.subheadline} x={pad} y={ySub} width={leftW} align="left" size={subSize} family={fonts.body} weight={fonts.bodySemi} fill={style.headerText} />
 
+      {hasHero(content) ? (
+        <Hero
+          ctx={ctx}
+          x={hasOffer ? rightX - 18 * u : rightX}
+          y={hasOffer ? 6 * u : hh * 0.08}
+          w={Math.max(60 * u, ribbonX - rightX + (hasOffer ? 10 * u : -8 * u))}
+          h={hasOffer ? Math.max(50 * u, boxY - 8 * u) : hh * 0.84}
+        />
+      ) : null}
+
       <Group x={ribbonX} y={0}>
         <Line closed points={[0, 0, ribbonW, 0, ribbonW, ribbonH, ribbonW / 2, ribbonH - notch, 0, ribbonH]} fill={style.panelBg} shadowColor="#000" shadowBlur={10 * u} shadowOpacity={0.25} shadowOffsetY={4 * u} />
       </Group>
@@ -830,7 +930,7 @@ function SplitHeader({ ctx }: { ctx: Ctx }) {
 
       {hasOffer ? (
         <Group x={boxX} y={boxY}>
-          <Rect width={boxW} height={boxH} fill={style.panelBg} cornerRadius={4 * u} shadowColor="#000" shadowBlur={12 * u} shadowOpacity={0.25} shadowOffsetY={5 * u} />
+          <Rect width={boxW} height={boxH} fill={style.panelBg} stroke={mix(style.panelBg, "#ffffff", 0.45)} strokeWidth={2.5 * u} cornerRadius={6 * u} shadowColor="#000" shadowBlur={14 * u} shadowOpacity={0.28} shadowOffsetY={5 * u} />
           <Text y={boxH * 0.1} width={boxW} align="center" text={content.offerLabel} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={labelSize} fill={style.panelText} wrap="none" />
           <Text x={(boxW - valueW - boxW * 0.2) / 2} y={boxH * 0.3} text={content.offerValue} fontFamily={fonts.heading} fontStyle={fonts.headingWeight} fontSize={valueSize} lineHeight={1} fill={style.panelText} wrap="none" />
           <Text
@@ -949,6 +1049,7 @@ function BlobHeader({ ctx }: { ctx: Ctx }) {
     <Group listening={false}>
       <Path data={blob} fill={style.headerBg} />
       <Circle x={cx} y={cy} radius={r} fill={mix(style.headerBg, "#ffffff", 0.08)} stroke={mix(style.headlineColor, style.headerBg, 0.35)} strokeWidth={10 * u} shadowColor="#000" shadowBlur={18 * u} shadowOpacity={0.2} />
+      <Circle x={cx} y={cy} radius={r * 0.88} stroke={style.headlineColor} strokeWidth={4 * u} opacity={0.85} />
       <Group x={cx} y={cy} rotation={-7}>
         <TitleText text={content.headline} x={-titleW / 2} y={-blockH / 2} width={titleW} size={h1} family={fonts.heading} weight={fonts.headingWeight} fill={style.headerText} depth={style.headline3d} depthColor={mix(style.headerBg, "#000000", 0.45)} />
         <TitleText text={content.headline2} x={-titleW / 2} y={-blockH / 2 + (content.headline ? h1 : 0)} width={titleW} size={h2} family={fonts.heading} weight={fonts.headingWeight} fill={style.headlineColor} depth={style.headline3d} depthColor={mix(style.headerBg, "#000000", 0.45)} />
@@ -1000,9 +1101,9 @@ function CircleHeader({ ctx }: { ctx: Ctx }) {
   const rightX = cx + r + 24 * u;
   const rightW = W - pad - rightX;
   const heroOn = hasHero(content);
-  const infoW = heroOn ? rightW * 0.52 : rightW;
-  const heroX = rightX + infoW + 10 * u;
-  const logoH = hh * 0.26;
+  const infoW = heroOn ? rightW * 0.5 : rightW;
+  const heroX = rightX + infoW + 6 * u;
+  const logoH = hh * 0.25;
   const nameSize = fit(store.name, fonts.body, fonts.bodyBold, infoW, hh * 0.1, 12 * u);
   const subSize = fit(content.subheadline, fonts.body, fonts.bodySemi, infoW, hh * 0.06, 10 * u);
   const mlSize = mlTitle ? 0 : fit(content.headlineMl, fonts.ml, fonts.mlBold, infoW, hh * 0.08, 10 * u);
@@ -1020,21 +1121,86 @@ function CircleHeader({ ctx }: { ctx: Ctx }) {
   y += contact ? contactSize * 1.6 : 0;
   const yMl = y;
 
+  const triColor = mix(style.panelBg, "#d97706", 0.22);
+
   return (
     <Group listening={false}>
-      {panel ? <Rect x={inset} y={-20 * u} width={W - inset * 2} height={hh + 4 * u} cornerRadius={26 * u} fill={style.headerBg} /> : null}
-      <Hero ctx={ctx} x={heroX} y={hh * 0.06} w={W - pad - heroX + pad * 0.4} h={hh * 0.9} />
+      {panel ? (
+        <Rect
+          x={inset}
+          y={-20 * u}
+          width={W - inset * 2}
+          height={hh + 4 * u}
+          cornerRadius={28 * u}
+          fill={style.headerBg}
+          shadowColor="#000"
+          shadowBlur={18 * u}
+          shadowOpacity={0.16}
+          shadowOffsetY={5 * u}
+        />
+      ) : null}
+      <Hero ctx={ctx} x={heroX} y={hh * 0.03} w={W - pad - heroX + pad * 0.45} h={hh * 0.94} splashColor={style.panelBg} />
       {logo ? <ContainImage image={logo} x={rightX + (infoW - logoH * 1.4) / 2} y={yLogo} w={logoH * 1.4} h={logoH} /> : null}
       <TitleText text={store.name} x={rightX} y={yName} width={infoW} size={nameSize} family={fonts.body} weight={fonts.bodyBold} fill={style.headerText} />
       <TitleText text={content.subheadline} x={rightX} y={ySub} width={infoW} size={subSize} family={content.subheadline.match(/[ഀ-ൿ]/) ? fonts.ml : fonts.body} weight={fonts.bodySemi} fill={style.headerText} />
       <TitleText text={contact} x={rightX} y={yContact} width={infoW} size={contactSize} family={fonts.body} weight={fonts.bodySemi} fill={style.headerText} />
       {mlSize ? <TitleText text={content.headlineMl} x={rightX} y={yMl} width={infoW} size={mlSize} family={fonts.ml} weight={fonts.mlBold} fill={style.headlineColor} /> : null}
 
-      <Circle x={cx} y={cy} radius={r} fill={style.panelBg} stroke={mix(style.panelBg, "#000000", 0.2)} strokeWidth={3 * u} shadowColor="#000" shadowBlur={18 * u} shadowOpacity={0.22} shadowOffsetY={6 * u} />
+      <Circle
+        x={cx}
+        y={cy}
+        radius={r}
+        fill={style.panelBg}
+        stroke={style.headlineColor === "#111111" ? "#111111" : mix(style.panelBg, "#000000", 0.25)}
+        strokeWidth={style.headlineColor === "#111111" ? 5 * u : 3.5 * u}
+        shadowColor="#000"
+        shadowBlur={18 * u}
+        shadowOpacity={0.24}
+        shadowOffsetY={6 * u}
+      />
+      {/* Subtle geometric triangle accents inside circle (like Shopprix image-8.png) */}
+      <Group
+        clipFunc={(c) => {
+          c.beginPath();
+          c.arc(cx, cy, r - 4 * u, 0, Math.PI * 2);
+          c.closePath();
+        }}
+        opacity={0.45}
+      >
+        <Line closed points={[cx - r * 0.72, cy - r * 0.48, cx - r * 0.52, cy - r * 0.68, cx - r * 0.46, cy - r * 0.42]} fill={triColor} />
+        <Line closed points={[cx + r * 0.56, cy - r * 0.52, cx + r * 0.76, cy - r * 0.36, cx + r * 0.5, cy - r * 0.28]} fill={triColor} />
+        <Line closed points={[cx - r * 0.68, cy + r * 0.35, cx - r * 0.45, cy + r * 0.52, cx - r * 0.62, cy + r * 0.62]} fill={triColor} />
+        <Line closed points={[cx + r * 0.55, cy + r * 0.38, cx + r * 0.75, cy + r * 0.52, cx + r * 0.48, cy + r * 0.62]} fill={triColor} />
+      </Group>
       <Group x={cx} y={cy} rotation={style.headingItalic ? -6 : 0}>
         {titleNodes}
       </Group>
-      {validity ? <Tag ctx={ctx} text={validity} cx={cx} y={cy + r * 0.78} size={r * 0.13} bg={style.stripBg} color={style.stripText} maxWidth={r * 1.9} rotation={-3} /> : null}
+      {validity ? (
+        <Group x={cx} y={cy + r * 0.85} rotation={-3}>
+          {(() => {
+            const dSize = fit(validity, fonts.body, fonts.bodyBold, r * 1.6, r * 0.135, 9 * u);
+            const dw = Math.min(r * 1.85, measure(validity, dSize, fonts.body, fonts.bodyBold) + dSize * 1.6);
+            const dh = dSize * 1.85;
+            const skew = dh * 0.22;
+            return (
+              <>
+                <Line
+                  closed
+                  points={[-dw / 2 + skew, -dh / 2, dw / 2, -dh / 2 - skew * 0.3, dw / 2 - skew, dh / 2, -dw / 2, dh / 2 + skew * 0.2]}
+                  fill={style.stripBg}
+                  stroke="#ffffff"
+                  strokeWidth={2.5 * u}
+                  shadowColor="#000"
+                  shadowBlur={8 * u}
+                  shadowOpacity={0.25}
+                  shadowOffsetY={3 * u}
+                />
+                <Text x={-dw / 2} y={-dh / 2} width={dw} height={dh} align="center" verticalAlign="middle" text={validity} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={dSize} fill={style.stripText} wrap="none" />
+              </>
+            );
+          })()}
+        </Group>
+      ) : null}
       <Sticker ctx={ctx} cx={cx + r * 0.85} cy={cy - r * 0.85} size={r * 0.12} />
     </Group>
   );
@@ -1046,8 +1212,8 @@ function StackHeader({ ctx }: { ctx: Ctx }) {
   const { width: W, u, pad } = geo;
   const hh = geo.header.h;
   const heroOn = hasHero(content);
-  const heroW = heroOn ? W * 0.3 : 0;
-  const titleX = pad + heroW + (heroOn ? 10 * u : 0);
+  const heroW = heroOn ? W * 0.32 : 0;
+  const titleX = pad + heroW + (heroOn ? 12 * u : 0);
   const titleW = W - pad - titleX;
 
   const logo = content.showLogo && store.logoUrl ? getLoadedImage(store.logoUrl) : null;
@@ -1081,12 +1247,25 @@ function StackHeader({ ctx }: { ctx: Ctx }) {
 
   return (
     <Group listening={false}>
-      {heroOn ? <Hero ctx={ctx} x={pad} y={topH + 10 * u} w={heroW} h={hh - topH - 10 * u} /> : null}
+      {heroOn ? <Hero ctx={ctx} x={pad * 0.8} y={topH + 4 * u} w={heroW} h={hh - topH - 4 * u} /> : null}
       {logo ? (
         <ContainImage image={logo} x={pad} y={14 * u} w={topH * 2.4} h={topH} />
       ) : (
         <Text x={pad} y={14 * u} height={topH} verticalAlign="middle" width={W * 0.6} text={store.name} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={nameSize} fill={style.headerText} wrap="none" ellipsis />
       )}
+      {/* LuLu-style botanical leaf pair sprouting from the top of the 3D title (like image-6.png) */}
+      {style.decoration === "sparkles" ? (
+        <Group x={titleX + titleW * 0.45} y={y1 - 6 * u} scaleX={0.55 * u} scaleY={0.55 * u}>
+          <Group rotation={-135}>
+            <Path data={LEAF} fill={style.decorationColor} />
+            <Path data={LEAF_VEIN} stroke={mix(style.decorationColor, "#000000", 0.25)} strokeWidth={2.5} />
+          </Group>
+          <Group x={18} y={4} rotation={-45} scaleX={0.82} scaleY={0.82}>
+            <Path data={LEAF} fill={mix(style.decorationColor, "#ffffff", 0.2)} />
+            <Path data={LEAF_VEIN} stroke={mix(style.decorationColor, "#000000", 0.25)} strokeWidth={2.5} />
+          </Group>
+        </Group>
+      ) : null}
       <Sticker ctx={ctx} cx={W - pad - 70 * u} cy={14 * u + topH / 2} size={topH * 0.45} />
       <TitleText text={content.kicker} x={titleX} y={yK} width={titleW} size={kickerSize} family={fonts.body} weight={fonts.bodyBold} fill={style.headerText} />
       <TitleText text={content.headline} x={titleX} y={y1} width={titleW} size={h1} family={fonts.heading} weight={fonts.headingWeight} fill={style.headlineColor} depth={style.headline3d} depthColor={depthColor} />
@@ -1149,7 +1328,7 @@ function ScriptHeader({ ctx }: { ctx: Ctx }) {
 
 function Strip({ ctx, box }: { ctx: Ctx; box: Box }) {
   const { geo, style, content, fonts, validity } = ctx;
-  const text = [content.subheadline, validity].filter(Boolean).join("   •   ");
+  const text = [content.subheadline, validity, content.deliveryBadge?.trim() ?? ""].filter(Boolean).join("   •   ");
   const family = /[ഀ-ൿ]/.test(text) ? fonts.ml : fonts.body;
   const size = fit(text, family, fonts.bodySemi, box.w - 40 * geo.u, box.h * 0.46, 12 * geo.u);
   const textW = Math.min(box.w, measure(text, size, family, fonts.bodySemi) + 56 * geo.u);
@@ -1223,8 +1402,11 @@ function ProductCard({
   const p = boxed ? Math.max(10 * u, Math.min(w, h) * 0.06) : Math.max(6 * u, Math.min(w, h) * 0.035);
   const radius = Math.min(style.cardRadius * u, w / 4, h / 4);
   const discount = discountPercent(item.normalPrice, item.offerPrice);
+  const saveAmount = Math.max(0, Math.round(item.normalPrice - item.offerPrice));
   const showMrp = content.showMrp && discount > 0;
-  const showBadge = content.showDiscount && discount > 0;
+  const customTag = item.tag?.trim();
+  const bogoMode = content.badgeMode === "bogo";
+  const showBadge = Boolean(customTag || (content.showDiscount && (discount > 0 || bogoMode)));
   const ps = style.priceStyle;
 
   // Names
@@ -1436,7 +1618,26 @@ function ProductCard({
     const s = Math.min(imgBoxW / image.naturalWidth, imgBoxH / image.naturalHeight) * fill * imageScale;
     const iw = image.naturalWidth * s;
     const ih = image.naturalHeight * s;
-    imageNode = <KonvaImage image={image} x={(w - iw) / 2} y={imgBottom - ih} width={iw} height={ih} />;
+    const ix = (w - iw) / 2;
+    const iy = imgBottom - ih;
+    const shadowRx = Math.max(12 * u, iw * 0.38);
+    const shadowRy = Math.max(4 * u, ih * 0.055);
+    imageNode = (
+      <Group listening={false}>
+        <Ellipse
+          x={w / 2}
+          y={imgBottom - 2 * u}
+          radiusX={shadowRx}
+          radiusY={shadowRy}
+          fillRadialGradientStartPoint={{ x: 0, y: 0 }}
+          fillRadialGradientEndPoint={{ x: 0, y: 0 }}
+          fillRadialGradientStartRadius={0}
+          fillRadialGradientEndRadius={shadowRx}
+          fillRadialGradientColorStops={[0, "rgba(0,0,0,0.24)", 0.55, "rgba(0,0,0,0.1)", 1, "rgba(0,0,0,0)"]}
+        />
+        <KonvaImage image={image} x={ix} y={iy} width={iw} height={ih} />
+      </Group>
+    );
   } else {
     const r = Math.min(imgBoxW, imgBoxH) * 0.38;
     imageNode = (
@@ -1467,7 +1668,9 @@ function ProductCard({
           height={h}
           cornerRadius={radius}
           fill={style.cardBg}
-          opacity={style.cardStyle === "panel" ? 0.6 : 1}
+          stroke={mix(style.cardBg, "#000000", 0.08)}
+          strokeWidth={1.5 * u}
+          opacity={style.cardStyle === "panel" ? 0.65 : 1}
           shadowEnabled={style.cardShadow && style.cardStyle === "card"}
           shadowColor="#0b1220"
           shadowBlur={18 * u}
@@ -1482,27 +1685,62 @@ function ProductCard({
       </Group>
       {names}
       {price}
-      {showBadge ? <DiscountBadge ctx={ctx} w={w} h={h} p={p} discount={discount} /> : null}
+      {showBadge ? <DiscountBadge ctx={ctx} w={w} h={h} p={p} discount={discount} saveAmount={saveAmount} customTag={customTag} /> : null}
     </Group>
   );
 }
 
-function DiscountBadge({ ctx, w, h, p, discount }: { ctx: Ctx; w: number; h: number; p: number; discount: number }) {
+function resolveBadgeLines(ctx: Ctx, discount: number, saveAmount: number, customTag?: string): { top: string; main: string; bottom: string } {
+  if (customTag) {
+    const upper = customTag.toUpperCase();
+    if (upper === "BUY 1 GET 1" || upper === "BOGO") return { top: "BUY 1", main: "GET 1", bottom: "FREE" };
+    const words = upper.split(/\s+/);
+    if (words.length === 1) return { top: "SPECIAL", main: words[0], bottom: "OFFER" };
+    if (words.length === 2) return { top: words[0], main: words[1], bottom: "" };
+    return { top: words[0], main: words.slice(1, -1).join(" "), bottom: words[words.length - 1] };
+  }
+  const mode = ctx.content.badgeMode ?? "percent";
+  if (mode === "bogo") return { top: "BUY 1", main: "GET 1", bottom: "FREE" };
+  const useSave = mode === "save" || (mode === "smart" && saveAmount >= 25);
+  if (useSave && saveAmount > 0) {
+    return { top: "SAVE", main: `₹${saveAmount}`, bottom: "OFF" };
+  }
+  return { top: "SAVE", main: `${discount}%`, bottom: "OFF" };
+}
+
+function DiscountBadge({
+  ctx,
+  w,
+  h,
+  p,
+  discount,
+  saveAmount,
+  customTag,
+}: {
+  ctx: Ctx;
+  w: number;
+  h: number;
+  p: number;
+  discount: number;
+  saveAmount: number;
+  customTag?: string;
+}) {
   const { style, fonts, geo } = ctx;
   const { u } = geo;
   const left = style.badgePosition === "left";
   const shadow = { shadowColor: "#000", shadowBlur: 8 * u, shadowOpacity: 0.22, shadowOffsetY: 3 * u };
+  const lines = resolveBadgeLines(ctx, discount, saveAmount, customTag);
 
   if (style.badgeShape === "corner") {
-    const tw = Math.max(64 * u, w * 0.28);
+    const tw = Math.max(64 * u, Math.min(w * 0.28, h * 0.28));
     const th = tw * 0.95;
     const x = left ? 0 : w - tw;
     return (
       <Group x={x} y={0} listening={false}>
         <Rect width={tw} height={th} fill={style.badgeBg} {...shadow} />
-        <Text y={th * 0.08} width={tw} align="center" text="SAVE" fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={th * 0.15} fill="#ffffff" wrap="none" />
-        <Text y={th * 0.27} width={tw} align="center" text={`${discount}%`} fontFamily={fonts.heading} fontStyle={fonts.headingWeight} fontSize={fit(`${discount}%`, fonts.heading, fonts.headingWeight, tw * 0.86, th * 0.42, 8 * u)} lineHeight={1} fill={style.badgeText} wrap="none" />
-        <Text y={th * 0.74} width={tw} align="center" text="OFF" fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={th * 0.15} fill="#ffffff" wrap="none" />
+        <Text y={th * 0.08} width={tw} align="center" text={lines.top} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={th * 0.15} fill="#ffffff" wrap="none" />
+        <Text y={th * 0.27} width={tw} align="center" text={lines.main} fontFamily={fonts.heading} fontStyle={fonts.headingWeight} fontSize={fit(lines.main, fonts.heading, fonts.headingWeight, tw * 0.86, th * 0.42, 8 * u)} lineHeight={1} fill={style.badgeText} wrap="none" />
+        <Text y={th * 0.74} width={tw} align="center" text={lines.bottom || "OFFER"} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={th * 0.15} fill="#ffffff" wrap="none" />
       </Group>
     );
   }
@@ -1514,8 +1752,8 @@ function DiscountBadge({ ctx, w, h, p, discount }: { ctx: Ctx; w: number; h: num
     return (
       <Group x={cx} y={cy} listening={false}>
         <Circle radius={r} fill={style.badgeBg} {...shadow} />
-        <Text x={-r} y={-r * 0.55} width={r * 2} align="center" text="DISC" fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={r * 0.34} fill={style.badgeText} wrap="none" />
-        <Text x={-r} y={-r * 0.12} width={r * 2} align="center" text={`${discount}%`} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={r * 0.58} fill={style.badgeText} wrap="none" />
+        <Text x={-r} y={-r * 0.55} width={r * 2} align="center" text={lines.top} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={r * 0.34} fill={style.badgeText} wrap="none" />
+        <Text x={-r} y={-r * 0.12} width={r * 2} align="center" text={lines.main} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={fit(lines.main, fonts.body, fonts.bodyBold, r * 1.75, r * 0.58, 7 * u)} fill={style.badgeText} wrap="none" />
       </Group>
     );
   }
@@ -1523,9 +1761,13 @@ function DiscountBadge({ ctx, w, h, p, discount }: { ctx: Ctx; w: number; h: num
   const r = Math.min(w, h) * 0.17;
   const x = left ? r * 0.78 : w - r * 0.78;
   const y = r * 0.78;
-  const big = r * 0.6;
-  const small = r * 0.3;
-  const blockH = big + small * 1.05;
+  const showTop = lines.top && lines.top !== "SAVE";
+  const big = r * (showTop ? 0.5 : 0.6);
+  const small = r * 0.28;
+  const blockH = (showTop ? small * 1.05 : 0) + big + (lines.bottom ? small * 1.05 : 0);
+  const yTop = -blockH / 2;
+  const yMain = yTop + (showTop ? small * 1.05 : 0);
+  const yBot = yMain + big * 1.02;
   return (
     <Group x={x} y={y} rotation={style.badgeShape === "tag" ? 8 : 0} listening={false}>
       {style.badgeShape === "burst" ? (
@@ -1535,8 +1777,13 @@ function DiscountBadge({ ctx, w, h, p, discount }: { ctx: Ctx; w: number; h: num
       ) : (
         <Rect x={-r} y={-r * 0.62} width={r * 2} height={r * 1.24} cornerRadius={r * 0.2} fill={style.badgeBg} {...shadow} />
       )}
-      <Text x={-r} y={-blockH / 2} width={r * 2} align="center" text={`${discount}%`} fontFamily={fonts.heading} fontStyle={fonts.headingWeight} fontSize={fit(`${discount}%`, fonts.heading, fonts.headingWeight, r * 1.5, big, 6 * u)} lineHeight={1} fill={style.badgeText} wrap="none" />
-      <Text x={-r} y={-blockH / 2 + big * 1.02} width={r * 2} align="center" text="OFF" fontFamily={fonts.heading} fontStyle={fonts.headingWeight} fontSize={small} lineHeight={1} fill={style.badgeText} wrap="none" />
+      {showTop ? (
+        <Text x={-r} y={yTop} width={r * 2} align="center" text={lines.top} fontFamily={fonts.heading} fontStyle={fonts.headingWeight} fontSize={small} lineHeight={1} fill={style.badgeText} wrap="none" />
+      ) : null}
+      <Text x={-r} y={yMain} width={r * 2} align="center" text={lines.main} fontFamily={fonts.heading} fontStyle={fonts.headingWeight} fontSize={fit(lines.main, fonts.heading, fonts.headingWeight, r * 1.55, big, 6 * u)} lineHeight={1} fill={style.badgeText} wrap="none" />
+      {lines.bottom ? (
+        <Text x={-r} y={yBot} width={r * 2} align="center" text={lines.bottom} fontFamily={fonts.heading} fontStyle={fonts.headingWeight} fontSize={small} lineHeight={1} fill={style.badgeText} wrap="none" />
+      ) : null}
     </Group>
   );
 }
@@ -1560,12 +1807,43 @@ function IconCircle({ x, y, r, icon, bg, color }: { x: number; y: number; r: num
   );
 }
 
+function QrFooterBadge({ ctx, x, y, size }: { ctx: Ctx; x: number; y: number; size: number }) {
+  const { qrUrl, geo } = ctx;
+  const matrix = useMemo(() => encodeQrMatrix(qrUrl), [qrUrl]);
+  const n = matrix.length;
+  const pad = size * 0.08;
+  const inner = size - pad * 2;
+  const cell = inner / n;
+  return (
+    <Group x={x} y={y} listening={false}>
+      <Rect width={size} height={size} cornerRadius={size * 0.12} fill="#ffffff" shadowColor="#000" shadowBlur={8 * geo.u} shadowOpacity={0.22} />
+      <Shape
+        sceneFunc={(c, shape) => {
+          c.beginPath();
+          for (let r = 0; r < n; r++) {
+            for (let col = 0; col < n; col++) {
+              if (matrix[r][col]) {
+                c.rect(pad + col * cell, pad + r * cell, cell + 0.35, cell + 0.35);
+              }
+            }
+          }
+          c.fillStrokeShape(shape);
+        }}
+        fill="#111827"
+      />
+    </Group>
+  );
+}
+
 function Footer({ ctx, box }: { ctx: Ctx; box: Box }) {
   const { geo, style, content, store, fonts } = ctx;
   const { u, pad } = geo;
   const note = content.footerNote;
   const noteFamily = /[ഀ-ൿ]/.test(note) ? fonts.ml : fonts.body;
   const contact = content.showContact ? contactText(store) : "";
+  const qrSize = content.showQr ? Math.min(box.h * 0.82, 104 * u) : 0;
+  const qrReserve = content.showQr ? qrSize + 20 * u : 0;
+  const availW = box.w - qrReserve;
 
   if (style.footerStyle === "split") {
     const items = content.showContact
@@ -1575,9 +1853,9 @@ function Footer({ ctx, box }: { ctx: Ctx; box: Box }) {
           store.address && { icon: "pin" as const, label: "Visit us", value: store.address },
         ].filter(Boolean) as Array<{ icon: keyof typeof ICONS; label: string; value: string }>)
       : [];
-    const noteSize = fit(note, noteFamily, "normal", box.w - pad * 2, 19 * u, 10 * u);
+    const noteSize = fit(note, noteFamily, "normal", availW - pad * 2, 19 * u, 10 * u);
     const rowH = box.h - (note ? noteSize * 1.8 : 0);
-    const colW = (box.w - pad * 2) / Math.max(1, items.length);
+    const colW = (availW - pad * 2) / Math.max(1, items.length);
     const r = Math.min(rowH * 0.3, 30 * u);
     return (
       <Group listening={false}>
@@ -1596,18 +1874,19 @@ function Footer({ ctx, box }: { ctx: Ctx; box: Box }) {
           );
         })}
         {note ? (
-          <Text x={pad} y={box.y + rowH} width={box.w - pad * 2} align="center" text={note} fontFamily={noteFamily} fontSize={noteSize} fill={style.footerText} opacity={0.85} wrap="none" ellipsis />
+          <Text x={pad} y={box.y + rowH} width={availW - pad * 2} align="center" text={note} fontFamily={noteFamily} fontSize={noteSize} fill={style.footerText} opacity={0.85} wrap="none" ellipsis />
         ) : null}
+        {content.showQr ? <QrFooterBadge ctx={ctx} x={box.w - pad * 0.6 - qrSize} y={box.y + (box.h - qrSize) / 2} size={qrSize} /> : null}
       </Group>
     );
   }
 
   if (style.footerStyle === "strip") {
-    const stripX = box.w * 0.5;
+    const stripX = availW * 0.5;
     const nameSize = fit(store.name, fonts.heading, fonts.headingWeight, stripX - pad * 2, box.h * 0.36, 12 * u);
     const contactSize = fit(contact, fonts.body, fonts.bodySemi, stripX - pad * 1.5, box.h * 0.15, 9 * u);
     const logo = content.showLogo && store.logoUrl ? getLoadedImage(store.logoUrl) : null;
-    const noteSize = fit(note, noteFamily, fonts.bodyBold, (box.w - stripX - pad * 1.2) * 1.9, box.h * 0.17, 9 * u);
+    const noteSize = fit(note, noteFamily, fonts.bodyBold, (availW - stripX - pad * 1.2) * 1.9, box.h * 0.17, 9 * u);
     return (
       <Group listening={false}>
         <Rect x={box.x} y={box.y} width={box.w} height={box.h} fill={style.footerBg} />
@@ -1622,7 +1901,7 @@ function Footer({ ctx, box }: { ctx: Ctx; box: Box }) {
           <Text
             x={stripX + 50 * u}
             y={box.y + box.h * 0.24}
-            width={box.w - stripX - 50 * u - pad * 0.6}
+            width={availW - stripX - 50 * u - pad * 0.6}
             height={box.h * 0.74}
             align="center"
             verticalAlign="middle"
@@ -1635,6 +1914,7 @@ function Footer({ ctx, box }: { ctx: Ctx; box: Box }) {
             wrap="word"
           />
         ) : null}
+        {content.showQr ? <QrFooterBadge ctx={ctx} x={box.w - pad * 0.6 - qrSize} y={box.y + (box.h - qrSize) / 2} size={qrSize} /> : null}
       </Group>
     );
   }
@@ -1643,22 +1923,23 @@ function Footer({ ctx, box }: { ctx: Ctx; box: Box }) {
   const inset = banner ? pad * 0.6 : 0;
   const bx = box.x + inset;
   const bw = box.w - inset * 2;
+  const textAreaW = bw - qrReserve;
   const by = box.y + (banner ? 6 * u : 0);
   const bh = box.h - (banner ? 6 * u + pad * 0.4 : 0);
   const lines = [contact, note].filter(Boolean);
-  const contactSize = fit(contact, fonts.body, fonts.bodyBold, bw - pad * 2, 28 * u, 14 * u);
-  const noteSize = fit(note, noteFamily, "normal", bw - pad * 2, 21 * u, 11 * u);
+  const contactSize = fit(contact, fonts.body, fonts.bodyBold, textAreaW - pad * 2, 28 * u, 14 * u);
+  const noteSize = fit(note, noteFamily, "normal", textAreaW - pad * 2, 21 * u, 11 * u);
   const blockH = (contact ? contactSize * 1.3 : 0) + (note ? noteSize * 1.3 : 0) + (lines.length > 1 ? 6 * u : 0);
   const startY = by + (bh - blockH) / 2;
   return (
     <Group listening={false}>
       <Rect x={bx} y={by} width={bw} height={bh} cornerRadius={banner ? bh * 0.3 : 0} fill={style.footerBg} />
-      {contact ? <Text x={bx + pad} y={startY} width={bw - pad * 2} align="center" text={contact} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={contactSize} lineHeight={1.3} fill={style.footerText} wrap="none" ellipsis /> : null}
+      {contact ? <Text x={bx + pad} y={startY} width={textAreaW - pad * 2} align="center" text={contact} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={contactSize} lineHeight={1.3} fill={style.footerText} wrap="none" ellipsis /> : null}
       {note ? (
         <Text
           x={bx + pad}
           y={startY + (contact ? contactSize * 1.3 + 6 * u : 0)}
-          width={bw - pad * 2}
+          width={textAreaW - pad * 2}
           align="center"
           text={note}
           fontFamily={noteFamily}
@@ -1670,6 +1951,7 @@ function Footer({ ctx, box }: { ctx: Ctx; box: Box }) {
           ellipsis
         />
       ) : null}
+      {content.showQr ? <QrFooterBadge ctx={ctx} x={bx + bw - pad * 0.5 - qrSize} y={by + (bh - qrSize) / 2} size={qrSize} /> : null}
     </Group>
   );
 }
@@ -1707,11 +1989,30 @@ const LEAF_VEIN = "M0 0 Q 56 -14 112 -8";
 const FLOWER_COLORS = ["#ff8f00", "#ffd600", "#e53935", "#ff5ca8", "#ffffff", "#ff6f00"];
 
 function Flower({ x, y, r, color }: { x: number; y: number; r: number; color: string }) {
+  const petals = 10;
+  const innerColor = mix(color, "#fff3b0", 0.38);
+  const coreColor = color === "#ffffff" ? "#f59e0b" : mix(color, "#7c2d12", 0.52);
   return (
     <Group x={x} y={y}>
-      <Star numPoints={12} innerRadius={r * 0.62} outerRadius={r} fill={color} lineJoin="round" stroke={mix(color, "#000000", 0.12)} strokeWidth={r * 0.06} />
-      <Star numPoints={10} innerRadius={r * 0.35} outerRadius={r * 0.6} fill={mix(color, "#ffffff", 0.25)} rotation={18} />
-      <Circle radius={r * 0.24} fill={color === "#ffffff" ? "#ffd600" : mix(color, "#5a2a00", 0.5)} />
+      {Array.from({ length: petals }, (_, i) => {
+        const a = (i / petals) * Math.PI * 2;
+        return (
+          <Circle
+            key={`o${i}`}
+            x={Math.cos(a) * r * 0.52}
+            y={Math.sin(a) * r * 0.52}
+            radius={r * 0.42}
+            fill={color}
+            stroke={mix(color, "#7c2d12", 0.18)}
+            strokeWidth={r * 0.04}
+          />
+        );
+      })}
+      {Array.from({ length: 8 }, (_, i) => {
+        const a = (i / 8) * Math.PI * 2 + 0.35;
+        return <Circle key={`m${i}`} x={Math.cos(a) * r * 0.3} y={Math.sin(a) * r * 0.3} radius={r * 0.28} fill={innerColor} />;
+      })}
+      <Circle radius={r * 0.24} fill={coreColor} />
     </Group>
   );
 }
@@ -1780,47 +2081,87 @@ function Decorations({ ctx, layer }: { ctx: Ctx; layer: "back" | "front" }) {
         </Group>
       );
     case "flowers": {
+      const garland = getLoadedImage(MARIGOLD_GARLAND_URL);
       const flowers: ReactNode[] = [];
       const corner = (cx: number, cy: number, spread: number, key: string) => {
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < 12; i++) {
           const a = rand() * Math.PI * 2;
           const d = rand() * spread;
           flowers.push(
-            <Flower key={`${key}${i}`} x={cx + Math.cos(a) * d} y={cy + Math.sin(a) * d * 0.8} r={(22 + rand() * 26) * u} color={FLOWER_COLORS[Math.floor(rand() * FLOWER_COLORS.length)]} />,
+            <Flower key={`${key}${i}`} x={cx + Math.cos(a) * d} y={cy + Math.sin(a) * d * 0.75} r={(18 + rand() * 22) * u} color={FLOWER_COLORS[Math.floor(rand() * FLOWER_COLORS.length)]} />,
           );
         }
       };
-      corner(40 * u, 30 * u, 190 * u, "l");
-      corner(W - 40 * u, 30 * u, 190 * u, "r");
-      corner(W * 0.5, -40 * u, 120 * u, "c");
-      return <Group listening={false}>{flowers}</Group>;
+      corner(36 * u, 24 * u, 165 * u, "l");
+      corner(W - 36 * u, 24 * u, 165 * u, "r");
+      corner(W * 0.5, -35 * u, 110 * u, "c");
+      const gw = 260 * u;
+      const gh = garland ? (gw * garland.naturalHeight) / garland.naturalWidth : 240 * u;
+      return (
+        <Group listening={false}>
+          {flowers}
+          {garland ? (
+            <>
+              <KonvaImage image={garland} x={-45 * u} y={-40 * u} width={gw} height={gh} opacity={0.95} />
+              <KonvaImage image={garland} x={W - gw + 45 * u} y={-40 * u} width={gw} height={gh} opacity={0.95} />
+            </>
+          ) : null}
+        </Group>
+      );
     }
-    case "sparkles":
+    case "sparkles": {
+      const darkBoard = readableOn(style.bgTop) === "#ffffff";
+      if (!darkBoard) {
+        // Organic botanical leaves & warm pollen dots (like LuLu Fresh Deals image-6.png)
+        const leafSpots = [
+          { x: 55 * u, y: hh * 0.25, r: -35, s: 0.55 },
+          { x: W - 65 * u, y: hh * 0.28, r: 145, s: 0.55 },
+          { x: 40 * u, y: hh * 0.78, r: 20, s: 0.48 },
+          { x: W - 45 * u, y: hh * 0.76, r: 195, s: 0.48 },
+        ];
+        return (
+          <Group listening={false}>
+            {leafSpots.map((lf, i) => (
+              <Group key={`lf${i}`} x={lf.x} y={lf.y} rotation={lf.r} scaleX={lf.s * u} scaleY={lf.s * u} opacity={0.82}>
+                <Path data={LEAF} fill={color} />
+                <Path data={LEAF_VEIN} stroke={mix(color, "#000000", 0.25)} strokeWidth={2.5} />
+              </Group>
+            ))}
+            {Array.from({ length: 12 }, (_, i) => (
+              <Circle key={`d${i}`} x={rand() * W} y={rand() * hh} radius={(3 + rand() * 5) * u} fill={mix(color, "#facc15", 0.45)} opacity={0.45} />
+            ))}
+          </Group>
+        );
+      }
       return (
         <Group listening={false}>
           {Array.from({ length: 16 }, (_, i) => {
             const inHeader = i < 11;
+            const sx = rand() * W;
+            const sy = inHeader ? rand() * hh : hh + rand() * (H - hh);
+            const sr = (8 + rand() * 12) * u;
             return (
-              <Star
-                key={i}
-                x={rand() * W}
-                y={inHeader ? rand() * hh : hh + rand() * (H - hh)}
-                numPoints={4}
-                innerRadius={(3 + rand() * 3) * u}
-                outerRadius={(10 + rand() * 14) * u}
-                fill={i % 2 ? color : mix(color, "#ffffff", 0.4)}
-                opacity={0.75}
-                rotation={rand() * 30}
-              />
+              <Group key={i} x={sx} y={sy} opacity={0.78}>
+                <Circle radius={sr * 1.4} fill={color} opacity={0.18} />
+                <Star
+                  numPoints={8}
+                  innerRadius={sr * 0.28}
+                  outerRadius={sr}
+                  fill={i % 2 ? color : mix(color, "#ffffff", 0.45)}
+                  rotation={rand() * 45}
+                />
+              </Group>
             );
           })}
         </Group>
       );
+    }
     case "swoosh":
       return (
         <Group listening={false}>
           <Path data={`M0 0 L${W} 0 L${W} ${hh * 0.62} C ${W * 0.72} ${hh * 0.9} ${W * 0.38} ${hh * 0.3} 0 ${hh * 0.82} Z`} fill={color} />
-          <Path data={`M0 ${hh * 0.82} C ${W * 0.38} ${hh * 0.3} ${W * 0.72} ${hh * 0.9} ${W} ${hh * 0.62} L ${W} ${hh * 0.7} C ${W * 0.72} ${hh * 1.0} ${W * 0.38} ${hh * 0.42} 0 ${hh * 0.9} Z`} fill={mix(color, "#000000", 0.25)} opacity={0.6} />
+          <Path data={`M0 ${hh * 0.79} C ${W * 0.38} ${hh * 0.28} ${W * 0.72} ${hh * 0.87} ${W} ${hh * 0.59} L ${W} ${hh * 0.65} C ${W * 0.72} ${hh * 0.94} ${W * 0.38} ${hh * 0.35} 0 ${hh * 0.85} Z`} fill="#fde047" opacity={0.88} />
+          <Path data={`M0 ${hh * 0.84} C ${W * 0.38} ${hh * 0.34} ${W * 0.72} ${hh * 0.93} ${W} ${hh * 0.64} L ${W} ${hh * 0.71} C ${W * 0.72} ${hh * 1.01} ${W * 0.38} ${hh * 0.43} 0 ${hh * 0.91} Z`} fill={mix(color, "#000000", 0.28)} opacity={0.65} />
         </Group>
       );
     default:

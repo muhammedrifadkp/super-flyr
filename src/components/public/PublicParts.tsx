@@ -1,12 +1,12 @@
-import { MapPin, MessageCircle, Phone } from "lucide-react";
+import { MapPin, MessageCircle, Minus, Phone, Plus, Sparkles } from "lucide-react";
 import { discountPercent, formatPrice } from "@/lib/format";
 import { readableOn } from "@/lib/poster/templates";
 import type { ResolvedItem, Store } from "@/lib/types";
 
-export function whatsappLink(store: Store, text?: string): string | null {
+export function whatsappLink(store: Store, text?: string): string {
   const digits = store.whatsapp.replace(/\D/g, "");
-  if (!digits) return null;
-  return `https://wa.me/${digits}${text ? `?text=${encodeURIComponent(text)}` : ""}`;
+  const query = text ? `?text=${encodeURIComponent(text)}` : "";
+  return digits ? `https://wa.me/${digits}${query}` : `https://wa.me/${query}`;
 }
 
 export function StoreHero({ store, color, children }: { store: Store; color: string; children?: React.ReactNode }) {
@@ -18,9 +18,14 @@ export function StoreHero({ store, color, children }: { store: Store; color: str
           // eslint-disable-next-line @next/next/no-img-element
           <img src={store.logoUrl} alt="" width={64} height={64} className="size-16 shrink-0 rounded-2xl bg-white object-contain p-1.5 shadow" />
         ) : null}
-        <div className="min-w-0">
-          <p className="truncate text-xl font-bold sm:text-2xl">{store.name}</p>
-          {store.tagline ? <p className="truncate text-sm opacity-85">{store.tagline}</p> : null}
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="truncate text-xl font-bold sm:text-2xl">{store.name}</p>
+            <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-semibold backdrop-blur-sm">
+              <Sparkles className="size-3" aria-hidden="true" /> WhatsApp Ordering Live
+            </span>
+          </div>
+          {store.tagline ? <p className="truncate text-sm opacity-90">{store.tagline}</p> : null}
           {store.address ? (
             <p className="mt-0.5 flex items-center gap-1 truncate text-xs opacity-80">
               <MapPin className="size-3.5 shrink-0" aria-hidden="true" /> {store.address}
@@ -37,10 +42,9 @@ export function ContactBar({ store, color, message }: { store: Store; color: str
   const wa = whatsappLink(store, message);
   const actions = [
     store.phone && { href: `tel:${store.phone.replace(/[^\d+]/g, "")}`, label: "Call", icon: Phone },
-    wa && { href: wa, label: "WhatsApp", icon: MessageCircle },
+    { href: wa, label: "WhatsApp", icon: MessageCircle },
     store.mapUrl && { href: store.mapUrl, label: "Directions", icon: MapPin },
   ].filter(Boolean) as Array<{ href: string; label: string; icon: typeof Phone }>;
-  if (!actions.length) return null;
   return (
     <nav
       aria-label="Contact the store"
@@ -64,27 +68,71 @@ export function ContactBar({ store, color, message }: { store: Store; color: str
   );
 }
 
-export function ProductGrid({ items, priceColor, badgeColor }: { items: ResolvedItem[]; priceColor: string; badgeColor: string }) {
+export function ProductGrid({
+  items,
+  priceColor,
+  badgeColor,
+  cart,
+  onAdd,
+  onUpdateQty,
+}: {
+  items: ResolvedItem[];
+  priceColor: string;
+  badgeColor: string;
+  cart?: Record<string, number>;
+  onAdd?: (item: ResolvedItem) => void;
+  onUpdateQty?: (item: ResolvedItem, delta: number) => void;
+}) {
   return (
     <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
       {items.map((item) => (
-        <OfferCard key={item.id} item={item} priceColor={priceColor} badgeColor={badgeColor} />
+        <OfferCard
+          key={item.id}
+          item={item}
+          priceColor={priceColor}
+          badgeColor={badgeColor}
+          qty={cart?.[item.id] ?? 0}
+          onAdd={onAdd ? () => onAdd(item) : undefined}
+          onUpdateQty={onUpdateQty ? (delta) => onUpdateQty(item, delta) : undefined}
+        />
       ))}
     </ul>
   );
 }
 
-function OfferCard({ item, priceColor, badgeColor }: { item: ResolvedItem; priceColor: string; badgeColor: string }) {
+function OfferCard({
+  item,
+  priceColor,
+  badgeColor,
+  qty = 0,
+  onAdd,
+  onUpdateQty,
+}: {
+  item: ResolvedItem;
+  priceColor: string;
+  badgeColor: string;
+  qty?: number;
+  onAdd?: () => void;
+  onUpdateQty?: (delta: number) => void;
+}) {
   const discount = discountPercent(item.normalPrice, item.offerPrice);
   const save = item.normalPrice - item.offerPrice;
+  const badgeLabel = item.tag?.trim()
+    ? item.tag.trim()
+    : save >= 25
+      ? `SAVE ${formatPrice(save)}`
+      : discount > 0
+        ? `${discount}% OFF`
+        : "";
+
   return (
-    <li className="relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-950/5">
-      {discount > 0 ? (
+    <li className="relative flex flex-col overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ring-gray-950/5 transition-shadow hover:shadow-md">
+      {badgeLabel ? (
         <span
-          className="absolute right-2 top-2 z-10 rounded-full px-2 py-1 text-xs font-extrabold tabular shadow"
+          className="absolute right-2 top-2 z-10 rounded-full px-2.5 py-1 text-xs font-extrabold uppercase tabular shadow"
           style={{ background: badgeColor, color: readableOn(badgeColor) }}
         >
-          {discount}% OFF
+          {badgeLabel}
         </span>
       ) : null}
       <div className="flex aspect-square items-center justify-center overflow-hidden bg-gray-50 p-5 sm:p-6">
@@ -110,13 +158,49 @@ function OfferCard({ item, priceColor, badgeColor }: { item: ResolvedItem; price
               <span className="line-through">MRP {formatPrice(item.normalPrice)}</span>
             </p>
           ) : null}
-          <p className="flex items-baseline gap-1">
-            <span className="text-xl font-extrabold tabular" style={{ color: priceColor }}>
-              {formatPrice(item.offerPrice)}
-            </span>
-            {item.unit ? <span className="text-xs text-gray-600">/{item.unit}</span> : null}
-          </p>
-          {save > 0 ? <p className="text-xs font-medium text-green-700 tabular">You save {formatPrice(save)}</p> : null}
+          <div className="flex items-end justify-between gap-2">
+            <div>
+              <p className="flex items-baseline gap-1">
+                <span className="text-xl font-extrabold tabular" style={{ color: priceColor }}>
+                  {formatPrice(item.offerPrice)}
+                </span>
+                {item.unit ? <span className="text-xs text-gray-600">/{item.unit}</span> : null}
+              </p>
+              {save > 0 ? <p className="text-xs font-semibold text-green-700 tabular">Save {formatPrice(save)}</p> : null}
+            </div>
+
+            {onAdd && onUpdateQty ? (
+              qty > 0 ? (
+                <div className="inline-flex h-9 items-center rounded-xl bg-gray-900 px-1 text-white shadow-sm">
+                  <button
+                    type="button"
+                    onClick={() => onUpdateQty(-1)}
+                    aria-label={`Decrease ${item.name} quantity`}
+                    className="flex size-7 items-center justify-center rounded-lg hover:bg-white/15"
+                  >
+                    <Minus className="size-3.5" />
+                  </button>
+                  <span className="min-w-6 text-center text-xs font-bold tabular">{qty}</span>
+                  <button
+                    type="button"
+                    onClick={() => onUpdateQty(1)}
+                    aria-label={`Increase ${item.name} quantity`}
+                    className="flex size-7 items-center justify-center rounded-lg hover:bg-white/15"
+                  >
+                    <Plus className="size-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onAdd}
+                  className="inline-flex h-9 items-center gap-1 rounded-xl bg-emerald-600 px-3 text-xs font-bold text-white shadow-sm transition-colors hover:bg-emerald-700"
+                >
+                  <Plus className="size-3.5" aria-hidden="true" /> Add
+                </button>
+              )
+            ) : null}
+          </div>
         </div>
       </div>
     </li>
@@ -137,7 +221,7 @@ export function groupByCategory(items: ResolvedItem[]): Array<{ category: string
 export function PoweredBy() {
   return (
     <p className="pb-28 pt-6 text-center text-xs text-gray-400 sm:pb-8">
-      Offers by <span translate="no">Super Flyr</span>
+      Digital Storefront & Offers by <span translate="no" className="font-semibold text-gray-500">Super Flyr</span>
     </p>
   );
 }
