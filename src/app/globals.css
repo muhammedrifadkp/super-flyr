@@ -1,0 +1,98 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-inter), var(--pf-notoMl), ui-sans-serif, system-ui, sans-serif;
+  --font-ml: var(--pf-notoMl), var(--font-inter), sans-serif;
+}
+
+@theme {
+  --color-brand-50: #ecfdf5;
+  --color-brand-100: #d1fae5;
+  --color-brand-500: #10b981;
+  --color-brand-600: #059669;
+  --color-brand-700: #047857;
+  --color-brand-800: #065f46;
+}
+
+:root {
+  color-scheme: light;
+  --background: #f6f7f9;
+  --foreground: #111827;
+}
+
+html {
+  -webkit-tap-highlight-color: rgb(16 185 129 / 0.15);
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  touch-action: manipulation;
+}
+
+@media (pointer: fine) {
+  html {
+    overscroll-behavior: none;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-brand-600);
+  outline-offset: 2px;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+  scroll-margin-top: 5rem;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Transparent-image preview background */
+.checkerboard {
+  background-color: #fff;
+  background-image:
+    linear-gradient(45deg, #e5e7eb 25%, transparent 25%),
+    linear-gradient(-45deg, #e5e7eb 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #e5e7eb 75%),
+    linear-gradient(-45deg, transparent 75%, #e5e7eb 75%);
+  background-size: 16px 16px;
+  background-position:
+    0 0,
+    0 8px,
+    8px -8px,
+    -8px 0;
+}
+
+dialog::backdrop {
+  background: rgb(17 24 39 / 0.5);
+}
+
+dialog {
+  overscroll-behavior: contain;
+}
+
+/* Native select fix for Windows */
+select {
+  background-color: #fff;
+  color: #111827;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
