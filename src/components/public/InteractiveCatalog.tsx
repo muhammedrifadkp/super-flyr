@@ -1,8 +1,8 @@
 "use client";
 
-import { Check, Clock, MessageCircle, Minus, Plus, Search, ShoppingBag, Trash2, X } from "lucide-react";
+import { CalendarX2, Check, Clock, MessageCircle, Minus, Plus, Search, ShoppingBag, Trash2, X } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { formatPrice } from "@/lib/format";
+import { formatPrice, isExpired } from "@/lib/format";
 import type { ResolvedItem, Store } from "@/lib/types";
 import { ContactBar, groupByCategory, ProductGrid, whatsappLink } from "./PublicParts";
 
@@ -55,6 +55,7 @@ export function InteractiveOfferCatalog({
   items,
   store,
   posterTitle,
+  validTo,
   priceColor,
   badgeColor,
   themeColor,
@@ -62,6 +63,7 @@ export function InteractiveOfferCatalog({
   items: ResolvedItem[];
   store: Store;
   posterTitle: string;
+  validTo?: string;
   priceColor: string;
   badgeColor: string;
   themeColor: string;
@@ -74,6 +76,21 @@ export function InteractiveOfferCatalog({
   const [deliveryMode, setDeliveryMode] = useState<"delivery" | "pickup">("delivery");
   const [address, setAddress] = useState("");
   const [copied, setCopied] = useState(false);
+  const [expiredNow, setExpiredNow] = useState(() => (validTo ? isExpired(validTo) : false));
+
+  useEffect(() => {
+    if (!validTo) return;
+    const check = () => {
+      if (isExpired(validTo)) {
+        setExpiredNow(true);
+        setCart({});
+        setCheckoutOpen(false);
+      }
+    };
+    check();
+    const id = window.setInterval(check, 5000);
+    return () => window.clearInterval(id);
+  }, [validTo]);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -93,6 +110,12 @@ export function InteractiveOfferCatalog({
   const groups = useMemo(() => groupByCategory(filtered), [filtered]);
 
   function updateQty(item: ResolvedItem, delta: number) {
+    if (expiredNow || (validTo && isExpired(validTo))) {
+      setExpiredNow(true);
+      setCart({});
+      setCheckoutOpen(false);
+      return;
+    }
     setCart((prev) => {
       const nextQty = (prev[item.id] ?? 0) + delta;
       if (nextQty <= 0) {
@@ -139,6 +162,23 @@ export function InteractiveOfferCatalog({
   }
 
   const orderWaUrl = whatsappLink(store, buildOrderMessage());
+
+  if (expiredNow) {
+    return (
+      <div className="mx-auto max-w-lg rounded-3xl bg-white p-8 text-center shadow-sm ring-1 ring-gray-200">
+        <div className="mx-auto mb-4 flex size-16 items-center justify-center rounded-2xl bg-red-50 text-red-600 ring-1 ring-red-100">
+          <CalendarX2 className="size-8" aria-hidden="true" />
+        </div>
+        <h2 className="text-xl font-extrabold text-gray-950">This Offer Has Expired</h2>
+        <p lang="ml" className="font-ml mt-1 text-base font-bold text-red-700">
+          ഈ ഓഫറിന്റെ കാലാവധി അവസാനിച്ചു
+        </p>
+        <p className="mt-2 text-sm text-gray-600">
+          The validity period for this promotion has ended, so products and ordering for this offer are no longer available.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">

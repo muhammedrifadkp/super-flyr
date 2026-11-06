@@ -40,8 +40,8 @@ export function TvDisplayScreen({
   const slides = useMemo(() => {
     if (!posters || !products) return [];
     let active = posters.filter((p) => p.published && !isExpired(p.content.validTo));
-    // Fallback to any poster with items so demos work immediately even before publishing
-    if (active.length === 0) active = posters;
+    // Fallback to any non-expired poster with items so demos work immediately even before publishing
+    if (active.length === 0) active = posters.filter((p) => !isExpired(p.content.validTo));
 
     const list: Array<{ poster: Poster; items: ReturnType<typeof resolveItems>; page: number; totalPages: number }> = [];
     for (const poster of active) {

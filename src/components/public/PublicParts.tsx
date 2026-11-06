@@ -9,7 +9,17 @@ export function whatsappLink(store: Store, text?: string): string {
   return digits ? `https://wa.me/${digits}${query}` : `https://wa.me/${query}`;
 }
 
-export function StoreHero({ store, color, children }: { store: Store; color: string; children?: React.ReactNode }) {
+export function StoreHero({
+  store,
+  color,
+  ended = false,
+  children,
+}: {
+  store: Store;
+  color: string;
+  ended?: boolean;
+  children?: React.ReactNode;
+}) {
   const text = readableOn(color);
   return (
     <header style={{ background: color, color: text }}>
@@ -21,9 +31,15 @@ export function StoreHero({ store, color, children }: { store: Store; color: str
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate text-xl font-bold sm:text-2xl">{store.name}</p>
-            <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-semibold backdrop-blur-sm">
-              <Sparkles className="size-3" aria-hidden="true" /> WhatsApp Ordering Live
-            </span>
+            {ended ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-red-600/90 px-2.5 py-0.5 text-[11px] font-bold text-white shadow-sm">
+                Offer Expired
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-white/20 px-2.5 py-0.5 text-[11px] font-semibold backdrop-blur-sm">
+                <Sparkles className="size-3" aria-hidden="true" /> WhatsApp Ordering Live
+              </span>
+            )}
           </div>
           {store.tagline ? <p className="truncate text-sm opacity-90">{store.tagline}</p> : null}
           {store.address ? (
@@ -138,7 +154,16 @@ function OfferCard({
       <div className="flex aspect-square items-center justify-center overflow-hidden bg-gray-50 p-5 sm:p-6">
         {item.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={item.imageUrl} alt="" width={240} height={240} loading="lazy" decoding="async" className="size-full object-contain" />
+          <img
+            src={item.imageUrl}
+            alt=""
+            width={240}
+            height={240}
+            loading="lazy"
+            decoding="async"
+            style={item.imageScale && item.imageScale !== 1 ? { transform: `scale(${item.imageScale})` } : undefined}
+            className="size-full object-contain"
+          />
         ) : (
           <span className="text-4xl font-black text-gray-200" aria-hidden="true">
             {item.name.slice(0, 1)}
