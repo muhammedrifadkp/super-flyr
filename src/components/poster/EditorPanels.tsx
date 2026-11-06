@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Check, ChevronDown, Package, Palette, Plus, RotateCcw, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Package, Palette, Plus, RotateCcw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { discountPercent, formatPrice, randomId } from "@/lib/format";
 import { resolveProductImageUrl } from "@/lib/keralaCatalogue";
@@ -92,6 +92,15 @@ export function ProductsPanel({
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const listRef = useRef<HTMLOListElement>(null);
+  const itemsRef = useRef<PosterItem[]>(poster.items);
+  const suppressClickRef = useRef(false);
+
+  useEffect(() => {
+    itemsRef.current = poster.items;
+  }, [poster.items]);
+
   const categories = useMemo(() => Array.from(new Set(products.map((p) => p.category))).sort(), [products]);
   const onPoster = useMemo(() => new Map(poster.items.map((i) => [i.productId, i.id])), [poster.items]);
 
@@ -103,6 +112,74 @@ export function ProductsPanel({
   }, [products, query, category]);
 
   const setItems = (next: PosterItem[]) => update({ items: next });
+
+  function startPointerDrag(id: string, e: React.PointerEvent, immediate: boolean) {
+    if (poster.items.length < 2) return;
+    if (e.button !== 0 && e.pointerType === "mouse") return;
+    if (!immediate && e.pointerType !== "mouse") return;
+
+    const startY = e.clientY;
+    let active = immediate;
+
+    if (immediate) {
+      e.preventDefault();
+      setDraggingId(id);
+    }
+
+    function onMove(ev: PointerEvent) {
+      if (!active) {
+        if (Math.abs(ev.clientY - startY) < 5) return;
+        active = true;
+        suppressClickRef.current = true;
+        setDraggingId(id);
+      }
+      ev.preventDefault();
+      const listEl = listRef.current;
+      if (!listEl) return;
+
+      const current = itemsRef.current;
+      const fromIndex = current.findIndex((i) => i.id === id);
+      if (fromIndex < 0) return;
+
+      const rowEls = Array.from(listEl.querySelectorAll<HTMLElement>("[data-poster-item-id]"));
+      let targetIndex = fromIndex;
+
+      for (let i = 0; i < rowEls.length; i++) {
+        if (i === fromIndex) continue;
+        const rect = rowEls[i].getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (i < fromIndex && ev.clientY < midY) {
+          targetIndex = i;
+          break;
+        }
+        if (i > fromIndex && ev.clientY > midY) {
+          targetIndex = i;
+        }
+      }
+
+      if (targetIndex !== fromIndex) {
+        const next = [...current];
+        const [moved] = next.splice(fromIndex, 1);
+        next.splice(targetIndex, 0, moved);
+        itemsRef.current = next;
+        update({ items: next });
+      }
+    }
+
+    function onEnd() {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onEnd);
+      window.removeEventListener("pointercancel", onEnd);
+      setDraggingId(null);
+      window.setTimeout(() => {
+        suppressClickRef.current = false;
+      }, 50);
+    }
+
+    window.addEventListener("pointermove", onMove, { passive: false });
+    window.addEventListener("pointerup", onEnd);
+    window.addEventListener("pointercancel", onEnd);
+  }
 
   function toggle(product: Product) {
     const existing = onPoster.get(product.id);
@@ -135,16 +212,21 @@ export function ProductsPanel({
         title={`On this poster (${items.length})`}
         action={
           items.length ? (
-            <button type="button" className="text-xs font-medium text-red-700 hover:underline" onClick={() => setItems([])}>
-              Remove all
-            </button>
+            <div className="flex items-center gap-3">
+              {items.length > 1 ? (
+                <span className="text-[11px] font-medium text-gray-400">Drag ⋮⋮ to reorder</span>
+              ) : null}
+              <button type="button" className="text-xs font-medium text-red-700 hover:underline" onClick={() => setItems([])}>
+                Remove all
+              </button>
+            </div>
           ) : null
         }
       >
         {items.length === 0 ? (
           <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">No products yet. Add some from the list below.</p>
         ) : (
-          <ol className="space-y-1.5">
+          <ol ref={listRef} className="space-y-1.5">
             {items.map((item, index) => (
               <PosterItemRow
                 key={item.id}
@@ -153,7 +235,12 @@ export function ProductsPanel({
                 index={index}
                 count={items.length}
                 open={selectedId === item.id}
-                onToggle={() => onSelect(selectedId === item.id ? null : item.id)}
+                dragging={draggingId === item.id}
+                onStartDrag={(e, immediate) => startPointerDrag(item.id, e, immediate)}
+                onToggle={() => {
+                  if (suppressClickRef.current) return;
+                  onSelect(selectedId === item.id ? null : item.id);
+                }}
                 onMove={(delta) => move(index, delta)}
                 onRemove={() => setItems(poster.items.filter((i) => i.id !== item.id))}
                 onPatch={(patch) => patchItem(item.id, patch)}
@@ -259,6 +346,8 @@ function PosterItemRow({
   index,
   count,
   open,
+  dragging,
+  onStartDrag,
   onToggle,
   onMove,
   onRemove,
@@ -269,6 +358,8 @@ function PosterItemRow({
   index: number;
   count: number;
   open: boolean;
+  dragging: boolean;
+  onStartDrag: (e: React.PointerEvent, immediate: boolean) => void;
   onToggle: () => void;
   onMove: (delta: number) => void;
   onRemove: () => void;
@@ -319,11 +410,38 @@ function PosterItemRow({
   }
 
   return (
-    <li ref={ref} className={cx("rounded-lg ring-1", open ? "bg-white ring-brand-300" : "bg-white ring-gray-200")}>
-      <div className="flex items-center gap-2 p-1.5">
-        <span className="w-5 shrink-0 text-center text-xs tabular text-gray-500">{index + 1}</span>
-        <Thumb url={item.imageUrl} />
-        <button type="button" onClick={onToggle} aria-expanded={open} className="min-w-0 flex-1 rounded py-1 text-left">
+    <li
+      ref={ref}
+      data-poster-item-id={item.id}
+      className={cx(
+        "rounded-lg ring-1 transition-shadow",
+        dragging
+          ? "relative z-10 bg-brand-50/80 shadow-md ring-2 ring-brand-500"
+          : open
+            ? "bg-white ring-brand-300"
+            : "bg-white ring-gray-200",
+      )}
+    >
+      <div className="flex items-center gap-1.5 p-1.5">
+        <div
+          onPointerDown={(e) => onStartDrag(e, true)}
+          title={count > 1 ? "Drag to reorder" : undefined}
+          className={cx(
+            "flex shrink-0 select-none items-center gap-1.5 rounded-md py-0.5 pl-0.5 pr-1",
+            count > 1 ? "touch-none cursor-grab text-gray-400 hover:bg-gray-50 hover:text-gray-700 active:cursor-grabbing" : "text-gray-300",
+          )}
+        >
+          <GripVertical className="size-4 shrink-0" aria-hidden="true" />
+          <span className="w-4 shrink-0 text-center text-xs font-medium tabular text-gray-500">{index + 1}</span>
+          <Thumb url={item.imageUrl} />
+        </div>
+        <button
+          type="button"
+          onPointerDown={(e) => onStartDrag(e, false)}
+          onClick={onToggle}
+          aria-expanded={open}
+          className={cx("min-w-0 flex-1 select-none rounded py-1 text-left", count > 1 && "sm:cursor-grab sm:active:cursor-grabbing")}
+        >
           <span className="block truncate text-sm font-medium text-gray-900">
             {item.name}
             {overridden ? <span className="ml-1.5 rounded bg-amber-100 px-1 text-[10px] font-semibold text-amber-800">EDITED</span> : null}
