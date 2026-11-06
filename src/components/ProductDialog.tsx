@@ -42,6 +42,7 @@ export function ProductDialog({
 }) {
   const formRef = useRef<HTMLFormElement>(null);
   const [image, setImage] = useState<PendingImage | null | "remove">(null);
+  const [imageScale, setImageScale] = useState<number>(() => product?.imageScale ?? 1);
   const [errors, setErrors] = useState<Errors>({});
   const [saving, setSaving] = useState(false);
   const [translating, setTranslating] = useState(false);
@@ -93,6 +94,7 @@ export function ProductDialog({
       normalPrice: parsePrice(form.get("normalPrice")),
       offerPrice: parsePrice(form.get("offerPrice")),
       imageUrl: product?.imageUrl ?? "",
+      imageScale,
     };
     const found = validate(values);
     setErrors(found);
@@ -276,7 +278,12 @@ export function ProductDialog({
             </p>
           ) : null}
         </div>
-        <ImageUploader currentUrl={product ? resolveProductImageUrl(product) : undefined} onChange={setImage} />
+        <ImageUploader
+          currentUrl={product ? resolveProductImageUrl(product) : undefined}
+          onChange={setImage}
+          scale={imageScale}
+          onScaleChange={setImageScale}
+        />
       </form>
     </Dialog>
   );

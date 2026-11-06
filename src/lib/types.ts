@@ -67,6 +67,8 @@ export interface Product {
   category: string;
   unit: string;
   imageUrl: string;
+  /** Default product image scale multiplier (0.4 – 2.2, default 1) so cutouts of different sizes look uniform. */
+  imageScale?: number;
   normalPrice: number;
   offerPrice: number;
   createdAt: string;
@@ -76,7 +78,9 @@ export interface Product {
 export type ProductInput = Pick<
   Product,
   "name" | "nameMl" | "category" | "unit" | "imageUrl" | "normalPrice" | "offerPrice"
->;
+> & {
+  imageScale?: number;
+};
 
 /** A product placed on a poster. Any field set here overrides the product library value. */
 export interface PosterItem {

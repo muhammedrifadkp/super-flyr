@@ -407,7 +407,14 @@ function PosterItemRow({
             ) : null}
           </div>
           <div className="col-span-2">
-            <ImageUploader key={imgKey} label="Product photo on this poster" currentUrl={item.imageUrl} onChange={uploadItemImage} />
+            <ImageUploader
+              key={imgKey}
+              label="Product photo on this poster"
+              currentUrl={item.imageUrl}
+              onChange={uploadItemImage}
+              scale={raw.imageScale ?? 1}
+              onScaleChange={(imageScale) => onPatch({ imageScale })}
+            />
             {uploadingImg ? <p className="mt-1 text-xs text-gray-600" aria-live="polite">Uploading photo…</p> : null}
           </div>
           <div className="col-span-2 space-y-1.5">

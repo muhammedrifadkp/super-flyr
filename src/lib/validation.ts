@@ -53,6 +53,7 @@ export const productInputSchema = z.object({
   category: text(40).min(1, "Category is required"),
   unit: text(20).default(""),
   imageUrl: imageUrl.default(""),
+  imageScale: z.number().min(0.4).max(2.2).optional(),
   normalPrice: price,
   offerPrice: price,
 });

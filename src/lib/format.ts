@@ -69,6 +69,9 @@ export function resolveItems(items: PosterItem[], products: Product[]): Resolved
   for (const item of items) {
     const product = byId.get(item.productId);
     if (!product) continue;
+    const baseScale = product.imageScale ?? 1;
+    const combinedImageScale =
+      item.imageScale !== undefined ? Number((item.imageScale * baseScale).toFixed(3)) : baseScale !== 1 ? baseScale : undefined;
     out.push({
       id: item.id,
       productId: product.id,
@@ -82,7 +85,7 @@ export function resolveItems(items: PosterItem[], products: Product[]): Resolved
       tag: item.tag?.trim() || undefined,
       widthScale: item.widthScale,
       heightScale: item.heightScale,
-      imageScale: item.imageScale,
+      imageScale: combinedImageScale,
       offsetX: item.offsetX,
       offsetY: item.offsetY,
     });

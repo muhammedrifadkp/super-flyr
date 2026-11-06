@@ -582,7 +582,15 @@ function ProductRow({
       <div className="checkerboard flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-lg ring-1 ring-gray-200">
         {resolvedImageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={resolvedImageUrl} alt="" width={56} height={56} loading="lazy" className="size-full object-contain p-1" />
+          <img
+            src={resolvedImageUrl}
+            alt=""
+            width={56}
+            height={56}
+            loading="lazy"
+            style={product.imageScale && product.imageScale !== 1 ? { transform: `scale(${product.imageScale})` } : undefined}
+            className="size-full object-contain p-1 transition-transform"
+          />
         ) : (
           <Package className="size-6 text-gray-300" aria-hidden="true" />
         )}

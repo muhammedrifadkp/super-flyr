@@ -1,6 +1,6 @@
 "use client";
 
-import { ImageUp, Trash2, Wand2 } from "lucide-react";
+import { ImageUp, Minus, Plus, RotateCcw, Trash2, Wand2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import { encodeImage, fileToCanvas, removeBackground, trimTransparent } from "@/lib/client/image";
 import { Button, Switch, cx } from "./ui";
@@ -18,12 +18,16 @@ export interface PendingImage {
 export function ImageUploader({
   currentUrl,
   onChange,
+  scale,
+  onScaleChange,
   removeBgDefault = true,
   maxSize = 1000,
   label = "Product photo",
 }: {
   currentUrl?: string;
   onChange: (image: PendingImage | null | "remove") => void;
+  scale?: number;
+  onScaleChange?: (scale: number) => void;
   removeBgDefault?: boolean;
   maxSize?: number;
   label?: string;
@@ -145,7 +149,12 @@ export function ImageUploader({
       >
         {shown ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={shown} alt="Preview" className="max-h-full max-w-full object-contain p-3" />
+          <img
+            src={shown}
+            alt="Preview"
+            style={scale && scale !== 1 ? { transform: `scale(${scale})` } : undefined}
+            className="max-h-full max-w-full object-contain p-3 transition-transform duration-100"
+          />
         ) : (
           <div className="flex flex-col items-center gap-2 p-4 text-center text-sm text-gray-600">
             <ImageUp className="size-8 text-gray-400" aria-hidden="true" />
@@ -175,6 +184,55 @@ export function ImageUploader({
       <Button icon={<ImageUp className="size-4" />} onClick={() => inputRef.current?.click()} className="w-full">
         {shown ? "Change photo…" : "Choose photo…"}
       </Button>
+
+      {shown && onScaleChange ? (
+        <div className="space-y-1.5 rounded-xl bg-gray-50 p-2.5 ring-1 ring-gray-200">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-medium text-gray-800">Product size</span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-semibold tabular text-gray-900">{Math.round((scale ?? 1) * 100)}%</span>
+              {scale !== undefined && scale !== 1 ? (
+                <button
+                  type="button"
+                  onClick={() => onScaleChange(1)}
+                  className="inline-flex items-center gap-0.5 rounded px-1 py-0.5 text-[11px] font-medium text-brand-700 hover:bg-brand-50"
+                >
+                  <RotateCcw className="size-3" />
+                  Reset
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              aria-label="Decrease product size"
+              onClick={() => onScaleChange(Math.max(0.5, Number(((scale ?? 1) - 0.05).toFixed(2))))}
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-white text-gray-700 ring-1 ring-gray-300 hover:bg-gray-100"
+            >
+              <Minus className="size-3.5" />
+            </button>
+            <input
+              type="range"
+              min={0.5}
+              max={1.8}
+              step={0.05}
+              value={scale ?? 1}
+              onChange={(e) => onScaleChange(Number(e.target.value))}
+              aria-label="Product size"
+              className="w-full accent-brand-600"
+            />
+            <button
+              type="button"
+              aria-label="Increase product size"
+              onClick={() => onScaleChange(Math.min(1.8, Number(((scale ?? 1) + 0.05).toFixed(2))))}
+              className="inline-flex size-7 shrink-0 items-center justify-center rounded-lg bg-white text-gray-700 ring-1 ring-gray-300 hover:bg-gray-100"
+            >
+              <Plus className="size-3.5" />
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {original ? (
         <div className="space-y-2 rounded-xl bg-gray-50 p-3 ring-1 ring-gray-200">
