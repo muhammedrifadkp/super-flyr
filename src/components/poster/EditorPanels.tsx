@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Check, ChevronDown, ExternalLink, Package, Palette, Plus, RotateCcw, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, Package, Palette, Plus, RotateCcw, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { discountPercent, formatPrice, randomId } from "@/lib/format";
 import { resolveProductImageUrl } from "@/lib/keralaCatalogue";
@@ -1026,33 +1026,14 @@ export function StylePanel({ poster, store, items, update }: { poster: Poster; s
                   active ? "ring-2 ring-brand-600" : "ring-gray-200 hover:ring-gray-300",
                 )}
               >
-                <span className="relative block bg-gray-100 p-1.5" aria-hidden="true">
+                <span className="block bg-gray-100 p-1.5" aria-hidden="true">
                   <TemplateThumb template={t} store={store} items={items} format={poster.layout.format} />
-                  {t.canvaUrl ? (
-                    <span className="absolute right-2 top-2 rounded-full bg-violet-700/90 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
-                      Canva
-                    </span>
-                  ) : null}
                 </span>
                 <span className="block truncate px-2 py-1.5 text-xs font-medium text-gray-900">{t.name}</span>
               </button>
             );
           })}
         </div>
-        {(() => {
-          const activeTpl = TEMPLATES.find((t) => t.id === poster.templateId);
-          return activeTpl?.canvaUrl ? (
-            <a
-              href={activeTpl.canvaUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-violet-50 px-3 py-2 text-xs font-semibold text-violet-800 ring-1 ring-violet-200 transition-colors hover:bg-violet-100"
-            >
-              <ExternalLink className="size-3.5" aria-hidden="true" />
-              <span>Open & Edit “{activeTpl.name}” in Canva</span>
-            </a>
-          ) : null;
-        })()}
         <Switch checked={matchTexts} onChange={setMatchTexts} label="Also use the template’s texts & grid" description="Turn off to keep your headline and layout." />
         <Button size="sm" className="w-full" icon={<Palette className="size-4" />} onClick={() => update({ style: applyBrandColors(style, store.colors) })}>
           Use my brand colours

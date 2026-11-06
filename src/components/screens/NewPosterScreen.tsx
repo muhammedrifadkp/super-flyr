@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -151,29 +151,7 @@ export function NewPosterScreen() {
                   ) : null}
                 </div>
                 <div className="px-1 pb-1 pt-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-semibold text-gray-950">{template.name}</p>
-                    {template.canvaUrl ? (
-                      <span
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          window.open(template.canvaUrl, "_blank", "noopener,noreferrer");
-                        }}
-                        role="link"
-                        tabIndex={0}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.stopPropagation();
-                            window.open(template.canvaUrl, "_blank", "noopener,noreferrer");
-                          }
-                        }}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-full bg-violet-50 px-2 py-0.5 text-[11px] font-semibold text-violet-700 ring-1 ring-violet-200 hover:bg-violet-100"
-                      >
-                        <ExternalLink className="size-3" aria-hidden="true" />
-                        Canva
-                      </span>
-                    ) : null}
-                  </div>
+                  <p className="font-semibold text-gray-950">{template.name}</p>
                   <p className="text-sm text-gray-600">{template.description}</p>
                   {template.autoCategory ? (
                     <p className="mt-1 text-xs font-medium text-brand-700">
