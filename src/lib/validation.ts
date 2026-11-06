@@ -6,7 +6,10 @@ const imageUrl = z
   .string()
   .trim()
   .max(600)
-  .refine((v) => v === "" || v.startsWith("/api/files/") || /^https:\/\//.test(v), "Invalid image URL");
+  .refine(
+    (v) => v === "" || v.startsWith("/api/files/") || v.startsWith("/poster-assets/") || /^https:\/\//.test(v),
+    "Invalid image URL",
+  );
 const price = z.coerce.number().min(0, "Price can’t be negative").max(10_000_000);
 const day = z.string().regex(/^(\d{4}-\d{2}-\d{2})?$/, "Use YYYY-MM-DD");
 
@@ -69,6 +72,11 @@ export const posterItemSchema = z.object({
   normalPrice: price.optional(),
   offerPrice: price.optional(),
   tag: text(24).optional(),
+  widthScale: z.number().min(0.4).max(2.2).optional(),
+  heightScale: z.number().min(0.4).max(2.2).optional(),
+  imageScale: z.number().min(0.4).max(2.2).optional(),
+  offsetX: z.number().min(-800).max(800).optional(),
+  offsetY: z.number().min(-800).max(800).optional(),
 });
 
 export const posterLayoutSchema = z.object({
@@ -79,6 +87,8 @@ export const posterLayoutSchema = z.object({
   imageScale: z.number().min(0.5).max(1.6),
   headerSize: z.number().min(0.6).max(1.6).default(1),
   heroFirst: z.boolean().default(false),
+  cardWidthScale: z.number().min(0.4).max(1.6).default(1),
+  cardHeightScale: z.number().min(0.4).max(1.6).default(1),
 });
 
 export const posterStyleSchema = z.object({
@@ -143,6 +153,14 @@ export const posterContentSchema = z.object({
   showMrp: z.boolean(),
   showDiscount: z.boolean(),
   showLogo: z.boolean(),
+  showStoreName: z.boolean().default(true),
+  logoScale: z.number().min(0.3).max(3).default(1),
+  storeNameScale: z.number().min(0.3).max(3).default(1),
+  brandAlign: z.enum(["auto", "left", "center", "right"]).default("auto"),
+  brandOffsetX: z.number().min(-1000).max(1000).default(0),
+  brandOffsetY: z.number().min(-1000).max(1000).default(0),
+  storeNameOffsetX: z.number().min(-1000).max(1000).default(0),
+  storeNameOffsetY: z.number().min(-1000).max(1000).default(0),
   showContact: z.boolean(),
   showValidity: z.boolean(),
   showHero: z.boolean().default(true),

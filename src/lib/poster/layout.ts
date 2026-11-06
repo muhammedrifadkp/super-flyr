@@ -51,6 +51,8 @@ export interface PosterGeometry {
   perPage: number;
   pages: number;
   heroFirst: boolean;
+  cardWidthScale: number;
+  cardHeightScale: number;
 }
 
 const HEADER_RATIO = { square: 0.215, portrait: 0.195, story: 0.16, a4: 0.175, landscape: 0.205 } as const;
@@ -137,13 +139,15 @@ export function computeGeometry(
   const rawPerPage = columns * rows;
   const perPage = heroFirst ? Math.max(1, rawPerPage - 1) : rawPerPage;
   const pages = Math.max(1, Math.ceil(itemCount / perPage));
+  const cardWidthScale = layout.cardWidthScale ?? 1;
+  const cardHeightScale = layout.cardHeightScale ?? 1;
 
-  return { width, height, u, pad, header, strip, grid, footer, columns, rows, gap, perPage, pages, heroFirst };
+  return { width, height, u, pad, header, strip, grid, footer, columns, rows, gap, perPage, pages, heroFirst, cardWidthScale, cardHeightScale };
 }
 
-/** Card boxes for one page. A part-filled last row is centred. */
+/** Card boxes for one page. A part-filled last row is centred, and global card width/height scales apply around each slot's centre. */
 export function cellsFor(geo: PosterGeometry, count: number, page = 0): Box[] {
-  const { grid, columns, rows, gap } = geo;
+  const { grid, columns, rows, gap, cardWidthScale = 1, cardHeightScale = 1 } = geo;
   const hero = geo.heroFirst && page === 0 && columns >= 2 && count >= 1;
   const totalSlots = hero ? count + 1 : count;
   const cellW = (grid.w - gap * (columns - 1)) / columns;
@@ -156,11 +160,15 @@ export function cellsFor(geo: PosterGeometry, count: number, page = 0): Box[] {
     if (hero && i === 0) {
       const inRowSlots = usedRows === 1 ? totalSlots : columns;
       const offsetX = ((columns - inRowSlots) * (cellW + gap)) / 2;
+      const slotW = cellW * 2 + gap;
+      const slotH = cellH;
+      const w = slotW * cardWidthScale;
+      const h = slotH * cardHeightScale;
       cells.push({
-        x: grid.x + offsetX,
-        y: grid.y + offsetY,
-        w: cellW * 2 + gap,
-        h: cellH,
+        x: grid.x + offsetX + (slotW - w) / 2,
+        y: grid.y + offsetY + (slotH - h) / 2,
+        w,
+        h,
       });
       continue;
     }
@@ -169,11 +177,15 @@ export function cellsFor(geo: PosterGeometry, count: number, page = 0): Box[] {
     const col = slot % columns;
     const inRow = row === usedRows - 1 ? totalSlots - row * columns : columns;
     const offsetX = ((columns - inRow) * (cellW + gap)) / 2;
+    const slotX = grid.x + offsetX + col * (cellW + gap);
+    const slotY = grid.y + offsetY + row * (cellH + gap);
+    const w = cellW * cardWidthScale;
+    const h = cellH * cardHeightScale;
     cells.push({
-      x: grid.x + offsetX + col * (cellW + gap),
-      y: grid.y + offsetY + row * (cellH + gap),
-      w: cellW,
-      h: cellH,
+      x: slotX + (cellW - w) / 2,
+      y: slotY + (cellH - h) / 2,
+      w,
+      h,
     });
   }
   return cells;

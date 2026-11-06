@@ -20,6 +20,8 @@ export interface PosterCanvasProps {
   displayWidth: number;
   selectedId?: string | null;
   onSelectItem?: (id: string) => void;
+  onMoveBrand?: (offsetX: number, offsetY: number) => void;
+  onMoveItem?: (id: string, offsetX: number, offsetY: number) => void;
   stageRef?: Ref<Konva.Stage>;
   showEmptyHint?: boolean;
   /** Called after fonts and images are loaded and drawn. */
@@ -87,6 +89,7 @@ interface Ctx {
   validity: string;
   seed: string;
   qrUrl: string;
+  onMoveBrand?: (offsetX: number, offsetY: number) => void;
 }
 
 // ---------- main component ----------
@@ -99,6 +102,8 @@ export default function PosterCanvas({
   displayWidth,
   selectedId,
   onSelectItem,
+  onMoveBrand,
+  onMoveItem,
   stageRef,
   showEmptyHint,
   onReady,
@@ -169,9 +174,11 @@ export default function PosterCanvas({
     validity: content.showValidity ? formatValidity(content.validFrom, content.validTo) : "",
     seed: poster.id,
     qrUrl,
+    onMoveBrand,
   };
   // Fonts change text metrics, so remount the layer once they are loaded.
   const layerKey = `${fontsKey}:${fontsReady ? 1 : 0}`;
+  const interactive = Boolean(onSelectItem || onMoveBrand || onMoveItem);
 
   return (
     <Stage
@@ -180,7 +187,7 @@ export default function PosterCanvas({
       height={Math.round(geo.height * scale)}
       scaleX={scale}
       scaleY={scale}
-      listening={Boolean(onSelectItem)}
+      listening={interactive}
     >
       <Layer key={layerKey}>
         <Background ctx={ctx} />
@@ -188,17 +195,30 @@ export default function PosterCanvas({
         <Header ctx={ctx} />
         {geo.strip ? <Strip ctx={ctx} box={geo.strip} /> : null}
         {style.cardStyle === "divider" && visible.length ? <GridLines ctx={ctx} cells={cells} /> : null}
-        {visible.map((item, index) => (
-          <ProductCard
-            key={item.id}
-            ctx={ctx}
-            box={cells[index]}
-            item={item}
-            imageScale={layout.imageScale}
-            selected={selectedId === item.id}
-            onSelect={onSelectItem ? () => onSelectItem(item.id) : undefined}
-          />
-        ))}
+        {visible.map((item, index) => {
+          const slot = cells[index];
+          const wScale = item.widthScale ?? 1;
+          const hScale = item.heightScale ?? 1;
+          const w = slot.w * wScale;
+          const h = slot.h * hScale;
+          const baseX = slot.x + (slot.w - w) / 2;
+          const baseY = slot.y + (slot.h - h) / 2;
+          const x = baseX + (item.offsetX ?? 0) * geo.u;
+          const y = baseY + (item.offsetY ?? 0) * geo.u;
+          return (
+            <ProductCard
+              key={item.id}
+              ctx={ctx}
+              box={{ x, y, w, h }}
+              basePos={{ x: baseX, y: baseY }}
+              item={item}
+              imageScale={layout.imageScale * (item.imageScale ?? 1)}
+              selected={selectedId === item.id}
+              onSelect={onSelectItem ? () => onSelectItem(item.id) : undefined}
+              onMove={onMoveItem ? (ox, oy) => onMoveItem(item.id, ox, oy) : undefined}
+            />
+          );
+        })}
         {visible.length === 0 && showEmptyHint ? <EmptyHint ctx={ctx} /> : null}
         {geo.footer ? <Footer ctx={ctx} box={geo.footer} /> : null}
         <Decorations ctx={ctx} layer="front" />
@@ -379,7 +399,63 @@ function ContainImage({ image, x, y, w, h, alignBottom }: { image: HTMLImageElem
   return <KonvaImage image={image} x={x + (w - iw) / 2} y={alignBottom ? y + h - ih : y + (h - ih) / 2} width={iw} height={ih} listening={false} />;
 }
 
-/** Store logo on a box, or the store name when there is no logo. */
+/** Interactive wrapper for the store logo & store name block so the shop owner can align, offset, or drag it on the canvas. */
+function BrandGroup({
+  ctx,
+  anchorX,
+  width,
+  hitY = 0,
+  hitH = 120,
+  children,
+}: {
+  ctx: Ctx;
+  anchorX: number;
+  width: number;
+  hitY?: number;
+  hitH?: number;
+  children: ReactNode;
+}) {
+  const { content, geo, onMoveBrand } = ctx;
+  const align = content.brandAlign ?? "auto";
+  const alignShiftX =
+    align === "left"
+      ? geo.pad - anchorX
+      : align === "center"
+        ? (geo.width - width) / 2 - anchorX
+        : align === "right"
+          ? geo.width - geo.pad - width - anchorX
+          : 0;
+  const dx = alignShiftX + (content.brandOffsetX ?? 0) * geo.u;
+  const dy = (content.brandOffsetY ?? 0) * geo.u;
+
+  return (
+    <Group
+      x={dx}
+      y={dy}
+      listening={Boolean(onMoveBrand)}
+      draggable={Boolean(onMoveBrand)}
+      onMouseEnter={(e) => {
+        const container = e.target.getStage()?.container();
+        if (container) container.style.cursor = "move";
+      }}
+      onMouseLeave={(e) => {
+        const container = e.target.getStage()?.container();
+        if (container) container.style.cursor = "default";
+      }}
+      onDragEnd={(e) => {
+        const movedX = (e.target.x() - alignShiftX) / geo.u;
+        const movedY = e.target.y() / geo.u;
+        e.target.position({ x: dx, y: dy });
+        onMoveBrand?.(Math.round(movedX), Math.round(movedY));
+      }}
+    >
+      {onMoveBrand ? <Rect x={anchorX} y={hitY} width={Math.max(40 * geo.u, width)} height={Math.max(30 * geo.u, hitH)} fill="#000" opacity={0.001} /> : null}
+      {children}
+    </Group>
+  );
+}
+
+/** Store logo on a box, plus store name (both individually scalable). */
 function LogoBox({
   ctx,
   x,
@@ -403,29 +479,65 @@ function LogoBox({
 }) {
   const { store, content, fonts, geo } = ctx;
   const logo = content.showLogo && store.logoUrl ? getLoadedImage(store.logoUrl) : null;
-  const inset = Math.min(w, h) * (shape === "circle" ? 0.16 : 0.1);
-  const nameSize = fit(store.name, fonts.body, fonts.bodyBold, w - inset * 2, h * 0.3, 10 * geo.u);
+  const showName = content.showStoreName !== false && Boolean(store.name.trim());
+  if (!logo && !showName) return null;
+
+  const logoScale = content.logoScale ?? 1;
+  const nameScale = content.storeNameScale ?? 1;
+  const nameDx = (content.storeNameOffsetX ?? 0) * geo.u;
+  const nameDy = (content.storeNameOffsetY ?? 0) * geo.u;
+  const boxScale = logo ? logoScale : nameScale;
+  const bw = w * boxScale;
+  const bh = h * boxScale;
+  const bx = x + (w - bw) / 2;
+  const by = y + (h - bh) / 2;
+  const inset = Math.min(bw, bh) * (shape === "circle" ? 0.14 : 0.09);
+  const innerW = Math.max(10, bw - inset * 2);
+  const innerH = Math.max(10, bh - inset * 2);
+  const baseNameSize = fit(store.name, fonts.body, fonts.bodyBold, innerW, h * (logo && showName ? 0.2 : 0.3), 9 * geo.u);
+  const finalNameSize = Math.max(9 * geo.u, baseNameSize * nameScale);
+
   return (
-    <Group x={x} y={y} listening={false}>
+    <Group x={bx} y={by} listening={false}>
       {isTransparent(bg) ? null : shape === "circle" ? (
-        <Circle x={w / 2} y={h / 2} radius={Math.min(w, h) / 2} fill={bg} shadowColor="#000" shadowBlur={14 * geo.u} shadowOpacity={0.18} shadowOffsetY={4 * geo.u} />
+        <Circle x={bw / 2} y={bh / 2} radius={Math.min(bw, bh) / 2} fill={bg} shadowColor="#000" shadowBlur={14 * geo.u} shadowOpacity={0.18} shadowOffsetY={4 * geo.u} />
       ) : (
-        <Rect width={w} height={h} cornerRadius={radius} fill={bg} shadowColor="#000" shadowBlur={10 * geo.u} shadowOpacity={0.15} shadowOffsetY={3 * geo.u} />
+        <Rect width={bw} height={bh} cornerRadius={radius * boxScale} fill={bg} shadowColor="#000" shadowBlur={10 * geo.u} shadowOpacity={0.15} shadowOffsetY={3 * geo.u} />
       )}
-      {logo ? (
-        <ContainImage image={logo} x={inset} y={inset} w={w - inset * 2} h={h - inset * 2} />
+      {logo && showName ? (
+        <>
+          <ContainImage image={logo} x={inset} y={inset} w={innerW} h={innerH * 0.64} />
+          <Text
+            x={inset + nameDx - innerW * 0.15}
+            y={inset + innerH * 0.66 + nameDy}
+            width={innerW * 1.3}
+            height={innerH * 0.36}
+            align="center"
+            verticalAlign="middle"
+            text={store.name}
+            fontFamily={fonts.body}
+            fontStyle={fonts.bodyBold}
+            fontSize={finalNameSize}
+            lineHeight={1.08}
+            fill={color}
+            wrap="word"
+            ellipsis
+          />
+        </>
+      ) : logo ? (
+        <ContainImage image={logo} x={inset} y={inset} w={innerW} h={innerH} />
       ) : (
         <Text
-          x={inset}
-          y={inset}
-          width={w - inset * 2}
-          height={h - inset * 2}
+          x={inset + nameDx - innerW * 0.15}
+          y={inset + nameDy}
+          width={innerW * 1.3}
+          height={innerH}
           align="center"
           verticalAlign="middle"
           text={store.name}
           fontFamily={fonts.body}
           fontStyle={fonts.bodyBold}
-          fontSize={Math.max(nameSize, Math.min(h * 0.2, 26 * geo.u))}
+          fontSize={Math.max(finalNameSize, Math.min(h * 0.2, 26 * geo.u) * nameScale)}
           lineHeight={1.1}
           fill={color}
           wrap="word"
@@ -693,10 +805,23 @@ function ClassicHeader({ ctx }: { ctx: Ctx }) {
   const topY = 22 * u;
   const topH = hh * 0.22;
   const logo = content.showLogo && store.logoUrl ? getLoadedImage(store.logoUrl) : null;
-  const logoSize = topH;
+  const logoScale = content.logoScale ?? 1;
+  const nameScale = content.storeNameScale ?? 1;
+  const showName = content.showStoreName !== false;
+  const nameDx = (content.storeNameOffsetX ?? 0) * u;
+  const nameDy = (content.storeNameOffsetY ?? 0) * u;
+  const logoSize = topH * logoScale;
+  const logoY = topY + (topH - logoSize) / 2;
   const nameX = pad + (logo ? logoSize + 14 * u : 0);
   const badgeSize = topH * 0.4;
   const badgeW = content.badgeText.trim() ? measure(content.badgeText.trim(), badgeSize, fonts.heading, fonts.headingWeight) + badgeSize * 1.2 : 0;
+  const headerNameText = showName
+    ? content.kicker.trim()
+      ? `${store.name}  •  ${content.kicker.trim()}`
+      : store.name
+    : content.kicker.trim();
+  const nameFontSize = topH * 0.42 * nameScale;
+  const brandBlockW = Math.min(W * 0.65, (logo ? logoSize + 14 * u : 0) + measure(headerNameText, nameFontSize, fonts.body, fonts.bodyBold) + 20 * u);
 
   const hasMl = Boolean(content.headlineMl.trim());
   const parts = [content.headline.trim(), content.headline2.trim()];
@@ -716,10 +841,11 @@ function ClassicHeader({ ctx }: { ctx: Ctx }) {
   const secondColor = ribbon ? style.panelBg : banner ? style.headerText : style.headerBg;
 
   return (
-    <Group listening={false}>
+    <Group listening={Boolean(ctx.onMoveBrand)}>
       {banner ? (
         <>
           <Shape
+            listening={false}
             sceneFunc={(c, shape) => {
               bannerPath(c, W, hh, wave);
               c.fillStrokeShape(shape);
@@ -727,7 +853,7 @@ function ClassicHeader({ ctx }: { ctx: Ctx }) {
             fill={style.headerBg}
           />
           {style.decoration === "rays" ? (
-            <Group clipFunc={(c) => bannerPath(c, W, hh, wave)}>
+            <Group listening={false} clipFunc={(c) => bannerPath(c, W, hh, wave)}>
               <Shape
                 opacity={0.28}
                 fill={style.decorationColor}
@@ -753,26 +879,31 @@ function ClassicHeader({ ctx }: { ctx: Ctx }) {
         </>
       ) : null}
 
-      {logo ? (
-        <Group x={pad} y={topY}>
-          <Rect width={logoSize} height={logoSize} cornerRadius={14 * u} fill="#ffffff" shadowColor="#000" shadowBlur={8 * u} shadowOpacity={0.15} />
-          <ContainImage image={logo} x={6 * u} y={6 * u} w={logoSize - 12 * u} h={logoSize - 12 * u} />
-        </Group>
-      ) : null}
-      <Text
-        x={nameX}
-        y={topY}
-        height={topH}
-        width={Math.max(10, W - nameX - pad - badgeW - 20 * u)}
-        verticalAlign="middle"
-        text={content.kicker.trim() ? `${store.name}  •  ${content.kicker.trim()}` : store.name}
-        fontFamily={fonts.body}
-        fontStyle={fonts.bodyBold}
-        fontSize={topH * 0.42}
-        fill={onBg}
-        wrap="none"
-        ellipsis
-      />
+      <BrandGroup ctx={ctx} anchorX={pad} width={brandBlockW} hitY={Math.min(topY, logoY)} hitH={Math.max(topH, logoSize)}>
+        {logo ? (
+          <Group x={pad} y={logoY} listening={false}>
+            <Rect width={logoSize} height={logoSize} cornerRadius={14 * u * logoScale} fill="#ffffff" shadowColor="#000" shadowBlur={8 * u} shadowOpacity={0.15} />
+            <ContainImage image={logo} x={6 * u * logoScale} y={6 * u * logoScale} w={logoSize - 12 * u * logoScale} h={logoSize - 12 * u * logoScale} />
+          </Group>
+        ) : null}
+        {headerNameText ? (
+          <Text
+            x={nameX + nameDx}
+            y={topY + (topH - topH * nameScale) / 2 + nameDy}
+            height={topH * nameScale}
+            width={Math.max(40, W - pad * 2)}
+            verticalAlign="middle"
+            text={headerNameText}
+            fontFamily={fonts.body}
+            fontStyle={fonts.bodyBold}
+            fontSize={nameFontSize}
+            fill={onBg}
+            wrap="none"
+            ellipsis
+            listening={false}
+          />
+        ) : null}
+      </BrandGroup>
       <Sticker ctx={ctx} cx={W - pad - badgeW / 2} cy={topY + topH / 2} size={badgeSize} />
 
       {ribbon && titleW ? (
@@ -887,25 +1018,28 @@ function SplitHeader({ ctx }: { ctx: Ctx }) {
   const dateSize = fit(validity, fonts.heading, fonts.headingWeight, dateW, boxH * 0.3, 12 * u);
 
   return (
-    <Group listening={false}>
-      <Line closed points={blockPoints} fill={style.headerBg} />
+    <Group listening={Boolean(ctx.onMoveBrand)}>
+      <Line listening={false} closed points={blockPoints} fill={style.headerBg} />
       {style.bgPattern === "diagonal" ? (
-        <Group clipFunc={(c) => {
-          c.beginPath();
-          c.moveTo(0, 0);
-          c.lineTo(W, 0);
-          c.lineTo(W, hh);
-          c.lineTo(cut, hh);
-          c.lineTo(0, hh - cut);
-          c.closePath();
-        }}>
+        <Group
+          listening={false}
+          clipFunc={(c) => {
+            c.beginPath();
+            c.moveTo(0, 0);
+            c.lineTo(W, 0);
+            c.lineTo(W, hh);
+            c.lineTo(cut, hh);
+            c.lineTo(0, hh - cut);
+            c.closePath();
+          }}
+        >
           {Array.from({ length: 40 }, (_, i) => (
             <Line key={i} points={[i * 60 * u - hh, hh, i * 60 * u, 0]} stroke={mix(style.headerBg, style.headerText, 0.12)} strokeWidth={2 * u} />
           ))}
         </Group>
       ) : null}
-      <Line closed points={[0, hh - cut - 18 * u, 0, hh - cut + 10 * u, cut + 28 * u, hh + 10 * u, cut + 46 * u, hh + 10 * u]} fill={style.panelBg} />
-      <Line closed points={[W, hh - 40 * u, W, hh + 10 * u, W - 60 * u, hh + 10 * u]} fill={style.panelBg} />
+      <Line listening={false} closed points={[0, hh - cut - 18 * u, 0, hh - cut + 10 * u, cut + 28 * u, hh + 10 * u, cut + 46 * u, hh + 10 * u]} fill={style.panelBg} />
+      <Line listening={false} closed points={[W, hh - 40 * u, W, hh + 10 * u, W - 60 * u, hh + 10 * u]} fill={style.panelBg} />
 
       <TitleText text={content.kicker} x={pad} y={yKicker} width={leftW} align="left" size={kickerSize} family={fonts.body} weight={fonts.bodySemi} fill={style.headerText} />
       <TitleText text={content.headline} x={pad} y={yH1} width={leftW} align="left" size={h1} family={fonts.heading} weight={fonts.headingWeight} fill={style.headlineColor} depth={style.headline3d} />
@@ -923,10 +1057,21 @@ function SplitHeader({ ctx }: { ctx: Ctx }) {
         />
       ) : null}
 
-      <Group x={ribbonX} y={0}>
-        <Line closed points={[0, 0, ribbonW, 0, ribbonW, ribbonH, ribbonW / 2, ribbonH - notch, 0, ribbonH]} fill={style.panelBg} shadowColor="#000" shadowBlur={10 * u} shadowOpacity={0.25} shadowOffsetY={4 * u} />
-      </Group>
-      <LogoBox ctx={ctx} x={ribbonX + ribbonW * 0.12} y={ribbonH * 0.1} w={ribbonW * 0.76} h={ribbonH * 0.62} bg="#00000000" color={style.panelText} radius={0} />
+      <BrandGroup ctx={ctx} anchorX={ribbonX} width={ribbonW} hitY={0} hitH={ribbonH}>
+        {(() => {
+          const rs = content.logoScale ?? 1;
+          const rw = ribbonW * rs;
+          const rh = ribbonH * rs;
+          const rx = ribbonX + (ribbonW - rw) / 2;
+          const rn = notch * rs;
+          return (
+            <Group x={rx} y={0} listening={false}>
+              <Line closed points={[0, 0, rw, 0, rw, rh, rw / 2, rh - rn, 0, rh]} fill={style.panelBg} shadowColor="#000" shadowBlur={10 * u} shadowOpacity={0.25} shadowOffsetY={4 * u} />
+            </Group>
+          );
+        })()}
+        <LogoBox ctx={ctx} x={ribbonX + ribbonW * 0.1} y={ribbonH * 0.08} w={ribbonW * 0.8} h={ribbonH * 0.68} bg="#00000000" color={style.panelText} radius={0} />
+      </BrandGroup>
 
       {hasOffer ? (
         <Group x={boxX} y={boxY}>
@@ -988,9 +1133,11 @@ function ArcHeader({ ctx }: { ctx: Ctx }) {
   const yDate = yMl + (content.headlineMl ? mlSize * 1.35 : 0);
 
   return (
-    <Group listening={false}>
-      <Ellipse x={W / 2} y={cy} radiusX={rx} radiusY={ry} fill={style.headerBg} shadowColor="#000" shadowBlur={20 * u} shadowOpacity={0.15} shadowOffsetY={6 * u} />
-      <LogoBox ctx={ctx} x={W / 2 - inner * 0.35} y={yLogo} w={inner * 0.7} h={logoH} bg="#00000000" color={style.headerText} radius={0} />
+    <Group listening={Boolean(ctx.onMoveBrand)}>
+      <Ellipse listening={false} x={W / 2} y={cy} radiusX={rx} radiusY={ry} fill={style.headerBg} shadowColor="#000" shadowBlur={20 * u} shadowOpacity={0.15} shadowOffsetY={6 * u} />
+      <BrandGroup ctx={ctx} anchorX={W / 2 - inner * 0.35} width={inner * 0.7} hitY={yLogo} hitH={logoH}>
+        <LogoBox ctx={ctx} x={W / 2 - inner * 0.35} y={yLogo} w={inner * 0.7} h={logoH} bg="#00000000" color={style.headerText} radius={0} />
+      </BrandGroup>
       <Path
         x={W / 2 - inner * 0.42}
         y={yLogo + logoH + hh * 0.025}
@@ -1046,16 +1193,18 @@ function BlobHeader({ ctx }: { ctx: Ctx }) {
   const yDate = ySub + (content.subheadline ? subSize * 1.6 : 0);
 
   return (
-    <Group listening={false}>
-      <Path data={blob} fill={style.headerBg} />
-      <Circle x={cx} y={cy} radius={r} fill={mix(style.headerBg, "#ffffff", 0.08)} stroke={mix(style.headlineColor, style.headerBg, 0.35)} strokeWidth={10 * u} shadowColor="#000" shadowBlur={18 * u} shadowOpacity={0.2} />
-      <Circle x={cx} y={cy} radius={r * 0.88} stroke={style.headlineColor} strokeWidth={4 * u} opacity={0.85} />
-      <Group x={cx} y={cy} rotation={-7}>
+    <Group listening={Boolean(ctx.onMoveBrand)}>
+      <Path listening={false} data={blob} fill={style.headerBg} />
+      <Circle listening={false} x={cx} y={cy} radius={r} fill={mix(style.headerBg, "#ffffff", 0.08)} stroke={mix(style.headlineColor, style.headerBg, 0.35)} strokeWidth={10 * u} shadowColor="#000" shadowBlur={18 * u} shadowOpacity={0.2} />
+      <Circle listening={false} x={cx} y={cy} radius={r * 0.88} stroke={style.headlineColor} strokeWidth={4 * u} opacity={0.85} />
+      <Group x={cx} y={cy} rotation={-7} listening={false}>
         <TitleText text={content.headline} x={-titleW / 2} y={-blockH / 2} width={titleW} size={h1} family={fonts.heading} weight={fonts.headingWeight} fill={style.headerText} depth={style.headline3d} depthColor={mix(style.headerBg, "#000000", 0.45)} />
         <TitleText text={content.headline2} x={-titleW / 2} y={-blockH / 2 + (content.headline ? h1 : 0)} width={titleW} size={h2} family={fonts.heading} weight={fonts.headingWeight} fill={style.headlineColor} depth={style.headline3d} depthColor={mix(style.headerBg, "#000000", 0.45)} />
         <TitleText text={content.headlineMl} x={-r * 0.65} y={blockH / 2 - mlSize * 1.2} width={r * 1.3} size={mlSize} family={fonts.ml} weight={fonts.mlBold} fill={style.headerText} />
       </Group>
-      <LogoBox ctx={ctx} x={rightX + rightW * 0.1} y={yLogo} w={rightW * 0.8} h={logoH} bg={style.panelBg} color={style.panelText} radius={14 * u} />
+      <BrandGroup ctx={ctx} anchorX={rightX + rightW * 0.1} width={rightW * 0.8} hitY={yLogo} hitH={logoH}>
+        <LogoBox ctx={ctx} x={rightX + rightW * 0.1} y={yLogo} w={rightW * 0.8} h={logoH} bg={style.panelBg} color={style.panelText} radius={14 * u} />
+      </BrandGroup>
       <TitleText text={content.subheadline} x={rightX} y={ySub} width={rightW} size={subSize} family={fonts.body} weight={fonts.bodyBold} fill={style.headerText} />
       {validity ? <Tag ctx={ctx} text={validity} cx={rightX + rightW / 2} y={yDate} size={hh * 0.075} bg={style.stripBg} color={style.stripText} maxWidth={rightW} /> : null}
       <Sticker ctx={ctx} cx={W - pad - 60 * u} cy={hh * 0.06 + 20 * u} size={hh * 0.06} />
@@ -1103,8 +1252,14 @@ function CircleHeader({ ctx }: { ctx: Ctx }) {
   const heroOn = hasHero(content);
   const infoW = heroOn ? rightW * 0.5 : rightW;
   const heroX = rightX + infoW + 6 * u;
-  const logoH = hh * 0.25;
-  const nameSize = fit(store.name, fonts.body, fonts.bodyBold, infoW, hh * 0.1, 12 * u);
+  const logoScale = content.logoScale ?? 1;
+  const nameScale = content.storeNameScale ?? 1;
+  const showName = content.showStoreName !== false;
+  const nameDx = (content.storeNameOffsetX ?? 0) * u;
+  const nameDy = (content.storeNameOffsetY ?? 0) * u;
+  const logoH = hh * 0.25 * logoScale;
+  const baseNameSize = fit(store.name, fonts.body, fonts.bodyBold, infoW, hh * 0.1, 12 * u);
+  const nameSize = baseNameSize * nameScale;
   const subSize = fit(content.subheadline, fonts.body, fonts.bodySemi, infoW, hh * 0.06, 10 * u);
   const mlSize = mlTitle ? 0 : fit(content.headlineMl, fonts.ml, fonts.mlBold, infoW, hh * 0.08, 10 * u);
   const contact = [store.phone, store.address].filter(Boolean).join("  •  ");
@@ -1114,7 +1269,7 @@ function CircleHeader({ ctx }: { ctx: Ctx }) {
   const yLogo = y;
   if (logo) y += logoH + 8 * u;
   const yName = y;
-  y += nameSize * 1.25;
+  if (showName) y += nameSize * 1.25;
   const ySub = y;
   y += content.subheadline ? subSize * 1.5 : 0;
   const yContact = y;
@@ -1124,9 +1279,10 @@ function CircleHeader({ ctx }: { ctx: Ctx }) {
   const triColor = mix(style.panelBg, "#d97706", 0.22);
 
   return (
-    <Group listening={false}>
+    <Group listening={Boolean(ctx.onMoveBrand)}>
       {panel ? (
         <Rect
+          listening={false}
           x={inset}
           y={-20 * u}
           width={W - inset * 2}
@@ -1140,8 +1296,12 @@ function CircleHeader({ ctx }: { ctx: Ctx }) {
         />
       ) : null}
       <Hero ctx={ctx} x={heroX} y={hh * 0.03} w={W - pad - heroX + pad * 0.45} h={hh * 0.94} splashColor={style.panelBg} />
-      {logo ? <ContainImage image={logo} x={rightX + (infoW - logoH * 1.4) / 2} y={yLogo} w={logoH * 1.4} h={logoH} /> : null}
-      <TitleText text={store.name} x={rightX} y={yName} width={infoW} size={nameSize} family={fonts.body} weight={fonts.bodyBold} fill={style.headerText} />
+      <BrandGroup ctx={ctx} anchorX={rightX} width={infoW} hitY={yLogo} hitH={(logo ? logoH + 8 * u : 0) + (showName ? nameSize * 1.3 : 20 * u)}>
+        {logo ? <ContainImage image={logo} x={rightX + (infoW - logoH * 1.4) / 2} y={yLogo} w={logoH * 1.4} h={logoH} /> : null}
+        {showName ? (
+          <TitleText text={store.name} x={rightX + nameDx - infoW * 0.2} y={yName + nameDy} width={infoW * 1.4} size={nameSize} family={fonts.body} weight={fonts.bodyBold} fill={style.headerText} />
+        ) : null}
+      </BrandGroup>
       <TitleText text={content.subheadline} x={rightX} y={ySub} width={infoW} size={subSize} family={content.subheadline.match(/[ഀ-ൿ]/) ? fonts.ml : fonts.body} weight={fonts.bodySemi} fill={style.headerText} />
       <TitleText text={contact} x={rightX} y={yContact} width={infoW} size={contactSize} family={fonts.body} weight={fonts.bodySemi} fill={style.headerText} />
       {mlSize ? <TitleText text={content.headlineMl} x={rightX} y={yMl} width={infoW} size={mlSize} family={fonts.ml} weight={fonts.mlBold} fill={style.headlineColor} /> : null}
@@ -1217,8 +1377,15 @@ function StackHeader({ ctx }: { ctx: Ctx }) {
   const titleW = W - pad - titleX;
 
   const logo = content.showLogo && store.logoUrl ? getLoadedImage(store.logoUrl) : null;
+  const logoScale = content.logoScale ?? 1;
+  const nameScale = content.storeNameScale ?? 1;
+  const showName = content.showStoreName !== false;
+  const nameDx = (content.storeNameOffsetX ?? 0) * u;
+  const nameDy = (content.storeNameOffsetY ?? 0) * u;
   const topH = hh * 0.13;
-  const nameSize = topH * 0.6;
+  const logoH = topH * logoScale;
+  const logoW = logo ? Math.min(topH * 2.2 * logoScale, (logoH * logo.naturalWidth) / Math.max(1, logo.naturalHeight)) : 0;
+  const nameSize = topH * 0.6 * nameScale;
   const kickerSize = fit(content.kicker, fonts.body, fonts.bodyBold, titleW, hh * 0.09, 10 * u);
   const h1 = fit(content.headline, fonts.heading, fonts.headingWeight, titleW, hh * 0.3, 18 * u);
   const h2 = fit(content.headline2, fonts.heading, fonts.headingWeight, titleW, hh * 0.3, 18 * u);
@@ -1246,13 +1413,30 @@ function StackHeader({ ctx }: { ctx: Ctx }) {
   const depthColor = style.headline3d ? (luminanceDark(style.headerText) ? style.headerText : mix(style.headlineColor, "#000000", 0.55)) : undefined;
 
   return (
-    <Group listening={false}>
+    <Group listening={Boolean(ctx.onMoveBrand)}>
       {heroOn ? <Hero ctx={ctx} x={pad * 0.8} y={topH + 4 * u} w={heroW} h={hh - topH - 4 * u} /> : null}
-      {logo ? (
-        <ContainImage image={logo} x={pad} y={14 * u} w={topH * 2.4} h={topH} />
-      ) : (
-        <Text x={pad} y={14 * u} height={topH} verticalAlign="middle" width={W * 0.6} text={store.name} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={nameSize} fill={style.headerText} wrap="none" ellipsis />
-      )}
+      <BrandGroup ctx={ctx} anchorX={pad} width={W * 0.65} hitY={14 * u} hitH={Math.max(logoH, topH * nameScale)}>
+        {logo ? (
+          <ContainImage image={logo} x={pad} y={14 * u + (topH - logoH) / 2} w={logoW} h={logoH} />
+        ) : null}
+        {showName ? (
+          <Text
+            x={pad + (logo ? logoW + 14 * u : 0) + nameDx}
+            y={14 * u + (topH - topH * nameScale) / 2 + nameDy}
+            height={topH * nameScale}
+            verticalAlign="middle"
+            width={W * 0.7}
+            text={store.name}
+            fontFamily={fonts.body}
+            fontStyle={fonts.bodyBold}
+            fontSize={nameSize}
+            fill={style.headerText}
+            wrap="none"
+            ellipsis
+            listening={false}
+          />
+        ) : null}
+      </BrandGroup>
       {/* LuLu-style botanical leaf pair sprouting from the top of the 3D title (like image-6.png) */}
       {style.decoration === "sparkles" ? (
         <Group x={titleX + titleW * 0.45} y={y1 - 6 * u} scaleX={0.55 * u} scaleY={0.55 * u}>
@@ -1301,8 +1485,10 @@ function ScriptHeader({ ctx }: { ctx: Ctx }) {
   const mlSize = fit(content.headlineMl, fonts.ml, fonts.mlBold, titleW, hh * 0.1, 11 * u);
 
   return (
-    <Group listening={false}>
-      <LogoBox ctx={ctx} x={cx - r} y={cy - r} w={r * 2} h={r * 2} bg={style.panelBg} color={style.panelText} radius={r} shape="circle" />
+    <Group listening={Boolean(ctx.onMoveBrand)}>
+      <BrandGroup ctx={ctx} anchorX={cx - r} width={r * 2} hitY={cy - r} hitH={r * 2}>
+        <LogoBox ctx={ctx} x={cx - r} y={cy - r} w={r * 2} h={r * 2} bg={style.panelBg} color={style.panelText} radius={r} shape="circle" />
+      </BrandGroup>
       <InlineTitle
         parts={[
           { text: content.headline, color: style.headerText },
@@ -1383,17 +1569,21 @@ function roundedRectPath(c: Konva.Context, w: number, h: number, r: number) {
 function ProductCard({
   ctx,
   box,
+  basePos,
   item,
   imageScale,
   selected,
   onSelect,
+  onMove,
 }: {
   ctx: Ctx;
   box: Box;
+  basePos: { x: number; y: number };
   item: ResolvedItem;
   imageScale: number;
   selected: boolean;
   onSelect?: () => void;
+  onMove?: (offsetX: number, offsetY: number) => void;
 }) {
   const { style, content, fonts, geo } = ctx;
   const { u } = geo;
@@ -1659,7 +1849,21 @@ function ProductCard({
     );
 
   return (
-    <Group x={box.x} y={box.y} onClick={onSelect} onTap={onSelect} listening={Boolean(onSelect)}>
+    <Group
+      x={box.x}
+      y={box.y}
+      onClick={onSelect}
+      onTap={onSelect}
+      listening={Boolean(onSelect || onMove)}
+      draggable={Boolean(onMove)}
+      onDragEnd={(e) => {
+        const ox = (e.target.x() - basePos.x) / u;
+        const oy = (e.target.y() - basePos.y) / u;
+        e.target.position({ x: box.x, y: box.y });
+        onSelect?.();
+        onMove?.(Math.round(ox), Math.round(oy));
+      }}
+    >
       {/* Hit area for free-standing products */}
       <Rect width={w} height={h} fill="#000" opacity={0.001} />
       {boxed ? (

@@ -38,6 +38,7 @@ export type FooterStyle = "band" | "split" | "strip" | "banner";
 export type StripStyle = "pill" | "bar";
 export type NameMode = "both" | "en" | "ml";
 export type BadgeMode = "percent" | "save" | "smart" | "bogo";
+export type BrandAlign = "auto" | "left" | "center" | "right";
 
 export interface BrandColors {
   primary: string;
@@ -88,6 +89,16 @@ export interface PosterItem {
   offerPrice?: number;
   /** Optional custom badge label for this item, e.g. "BUY 1 GET 1" or "COMBO". */
   tag?: string;
+  /** Individual card width multiplier (0.4 – 2.0, default 1). */
+  widthScale?: number;
+  /** Individual card height multiplier (0.4 – 2.0, default 1). */
+  heightScale?: number;
+  /** Individual product image scale multiplier (0.4 – 2.0, default 1). */
+  imageScale?: number;
+  /** Individual card horizontal offset in design units. */
+  offsetX?: number;
+  /** Individual card vertical offset in design units. */
+  offsetY?: number;
 }
 
 export interface PosterStyle {
@@ -157,6 +168,10 @@ export interface PosterLayout {
   headerSize: number;
   /** Highlights the 1st product on page 1 across 2 columns as a Mega Deal. */
   heroFirst?: boolean;
+  /** 0.5 – 1.4, scales the width of all product cards inside their grid slots. */
+  cardWidthScale?: number;
+  /** 0.5 – 1.4, scales the height of all product cards inside their grid slots. */
+  cardHeightScale?: number;
 }
 
 export interface PosterContent {
@@ -189,6 +204,22 @@ export interface PosterContent {
   showMrp: boolean;
   showDiscount: boolean;
   showLogo: boolean;
+  /** Whether to display the store name text in the header. */
+  showStoreName?: boolean;
+  /** 0.4 – 2.4, scales the store logo in the header. */
+  logoScale?: number;
+  /** 0.4 – 2.4, scales the store name text in the header. */
+  storeNameScale?: number;
+  /** Quick horizontal alignment for store logo & name in the header. */
+  brandAlign?: BrandAlign;
+  /** Horizontal offset for store logo & name in design units. */
+  brandOffsetX?: number;
+  /** Vertical offset for store logo & name in design units. */
+  brandOffsetY?: number;
+  /** Extra horizontal offset for store name relative to logo. */
+  storeNameOffsetX?: number;
+  /** Extra vertical offset for store name relative to logo. */
+  storeNameOffsetY?: number;
   showContact: boolean;
   showValidity: boolean;
   showHero: boolean;
@@ -227,4 +258,9 @@ export interface ResolvedItem {
   normalPrice: number;
   offerPrice: number;
   tag?: string;
+  widthScale?: number;
+  heightScale?: number;
+  imageScale?: number;
+  offsetX?: number;
+  offsetY?: number;
 }

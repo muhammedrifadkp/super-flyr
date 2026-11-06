@@ -986,7 +986,17 @@ export const FORMATS: Record<FormatKey, { label: string; hint: string; width: nu
   landscape: { label: "TV screen", hint: "Shop display 16:9", width: 1920, height: 1080, maxPerPage: 10 },
 };
 
-export const BASE_LAYOUT: PosterLayout = { format: "portrait", columns: 0, rows: 0, gap: 22, imageScale: 1, headerSize: 1, heroFirst: false };
+export const BASE_LAYOUT: PosterLayout = {
+  format: "portrait",
+  columns: 0,
+  rows: 0,
+  gap: 22,
+  imageScale: 1,
+  headerSize: 1,
+  heroFirst: false,
+  cardWidthScale: 1,
+  cardHeightScale: 1,
+};
 
 export function defaultLayout(format: FormatKey = "portrait", template?: PosterTemplate): PosterLayout {
   return { ...BASE_LAYOUT, ...template?.layout, format };
@@ -1012,6 +1022,14 @@ export const BASE_CONTENT: PosterContent = {
   showMrp: true,
   showDiscount: true,
   showLogo: true,
+  showStoreName: true,
+  logoScale: 1,
+  storeNameScale: 1,
+  brandAlign: "auto",
+  brandOffsetX: 0,
+  brandOffsetY: 0,
+  storeNameOffsetX: 0,
+  storeNameOffsetY: 0,
   showContact: true,
   showValidity: true,
   showHero: true,

@@ -253,12 +253,45 @@ function EditorInner({
     (itemId: string | null) => {
       setSelectedId(itemId);
       if (itemId) {
-        setTab("products");
+        setTab((current) => (current === "layout" ? "layout" : "products"));
         const index = items.findIndex((i) => i.id === itemId);
         if (index >= 0) setPage(Math.floor(index / geo.perPage));
       }
     },
     [geo.perPage, items],
+  );
+
+  const handleMoveBrand = useCallback(
+    (brandOffsetX: number, brandOffsetY: number) => {
+      if (!latest.current) return;
+      update({
+        content: {
+          ...latest.current.content,
+          brandOffsetX: Math.max(-600, Math.min(600, brandOffsetX)),
+          brandOffsetY: Math.max(-400, Math.min(400, brandOffsetY)),
+        },
+      });
+    },
+    [update],
+  );
+
+  const handleMoveItem = useCallback(
+    (itemId: string, offsetX: number, offsetY: number) => {
+      if (!latest.current) return;
+      setSelectedId(itemId);
+      update({
+        items: latest.current.items.map((it) =>
+          it.id === itemId
+            ? {
+                ...it,
+                offsetX: Math.max(-600, Math.min(600, offsetX)),
+                offsetY: Math.max(-600, Math.min(600, offsetY)),
+              }
+            : it,
+        ),
+      });
+    },
+    [update],
   );
 
   /** Renders all pages at full size. Returns data URLs. */
@@ -350,7 +383,7 @@ function EditorInner({
             {tab === "products" ? (
               <ProductsPanel poster={poster} items={items} products={products} update={update} selectedId={selectedId} onSelect={selectItem} />
             ) : tab === "layout" ? (
-              <LayoutPanel poster={poster} update={update} pages={pages} />
+              <LayoutPanel poster={poster} items={items} selectedId={selectedId} onSelect={selectItem} update={update} pages={pages} />
             ) : tab === "style" ? (
               <StylePanel poster={poster} store={store} items={items} update={update} />
             ) : (
@@ -371,6 +404,8 @@ function EditorInner({
               page={currentPage}
               selectedId={selectedId}
               onSelectItem={selectItem}
+              onMoveBrand={handleMoveBrand}
+              onMoveItem={handleMoveItem}
               showEmptyHint
             />
           </div>

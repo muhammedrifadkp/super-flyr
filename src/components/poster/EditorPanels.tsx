@@ -19,7 +19,7 @@ import {
   type TemplateCategory,
 } from "@/lib/poster/templates";
 import { FittedPoster } from "./PosterPreview";
-import type { BadgeMode, FontKey, FormatKey, Poster, PosterItem, PosterStyle, Product, ResolvedItem, Store } from "@/lib/types";
+import type { BadgeMode, BrandAlign, FontKey, FormatKey, Poster, PosterItem, PosterStyle, Product, ResolvedItem, Store } from "@/lib/types";
 import { ImageUploader, type PendingImage } from "../ImageUploader";
 import { Button, ColorInput, Field, IconButton, Input, Select, Switch, Textarea, cx } from "../ui";
 
@@ -278,13 +278,20 @@ function PosterItemRow({
   useEffect(() => {
     if (open) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [open]);
-  const overridden =
+  const textOverridden =
     raw.name !== undefined ||
     raw.nameMl !== undefined ||
     raw.unit !== undefined ||
     raw.normalPrice !== undefined ||
     raw.offerPrice !== undefined ||
     Boolean(raw.tag);
+  const sizeOverridden =
+    (raw.widthScale !== undefined && raw.widthScale !== 1) ||
+    (raw.heightScale !== undefined && raw.heightScale !== 1) ||
+    (raw.imageScale !== undefined && raw.imageScale !== 1) ||
+    Boolean(raw.offsetX) ||
+    Boolean(raw.offsetY);
+  const overridden = textOverridden || sizeOverridden;
   const discount = discountPercent(item.normalPrice, item.offerPrice);
 
   const num = (value: string) => {
@@ -359,7 +366,7 @@ function PosterItemRow({
             {(p) => <Input {...p} value={raw.unit ?? item.unit} onChange={(e) => onPatch({ unit: e.target.value })} maxLength={20} />}
           </Field>
           <div className="flex items-end">
-            {overridden ? (
+            {textOverridden ? (
               <Button
                 size="sm"
                 variant="ghost"
@@ -390,18 +397,262 @@ function PosterItemRow({
               ))}
             </div>
           </div>
+          <div className="col-span-2 space-y-2.5 rounded-lg bg-gray-50/90 p-2.5 ring-1 ring-gray-200/80">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-gray-900">Single Card Size & Position</span>
+              {sizeOverridden ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    onPatch({
+                      widthScale: undefined,
+                      heightScale: undefined,
+                      imageScale: undefined,
+                      offsetX: undefined,
+                      offsetY: undefined,
+                    })
+                  }
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-brand-700 hover:bg-brand-50"
+                >
+                  <RotateCcw className="size-3" />
+                  Reset size
+                </button>
+              ) : null}
+            </div>
+            <Slider
+              label="This card width"
+              min={0.5}
+              max={1.8}
+              step={0.05}
+              value={raw.widthScale ?? 1}
+              display={`${Math.round((raw.widthScale ?? 1) * 100)}%`}
+              onChange={(widthScale) => onPatch({ widthScale })}
+            />
+            <Slider
+              label="This card height"
+              min={0.5}
+              max={1.8}
+              step={0.05}
+              value={raw.heightScale ?? 1}
+              display={`${Math.round((raw.heightScale ?? 1) * 100)}%`}
+              onChange={(heightScale) => onPatch({ heightScale })}
+            />
+            <Slider
+              label="This card image size"
+              min={0.5}
+              max={1.8}
+              step={0.05}
+              value={raw.imageScale ?? 1}
+              display={`${Math.round((raw.imageScale ?? 1) * 100)}%`}
+              onChange={(imageScale) => onPatch({ imageScale })}
+            />
+            <div className="grid grid-cols-2 gap-2.5">
+              <Slider
+                label="Position X"
+                min={-300}
+                max={300}
+                step={5}
+                value={raw.offsetX ?? 0}
+                display={`${raw.offsetX ?? 0}px`}
+                onChange={(offsetX) => onPatch({ offsetX })}
+              />
+              <Slider
+                label="Position Y"
+                min={-300}
+                max={300}
+                step={5}
+                value={raw.offsetY ?? 0}
+                display={`${raw.offsetY ?? 0}px`}
+                onChange={(offsetY) => onPatch({ offsetY })}
+              />
+            </div>
+            <p className="text-[11px] text-gray-500">Tip: You can also drag this card directly on the poster canvas.</p>
+          </div>
         </div>
       ) : null}
     </li>
   );
 }
 
+// ---------------- Brand (Store Logo & Name) Size & Position ----------------
+
+function BrandSizeAndPositionSection({ poster, update }: { poster: Poster; update: Update }) {
+  const { content } = poster;
+  const set = (patch: Partial<Poster["content"]>) => update({ content: { ...content, ...patch } });
+  const logoScale = content.logoScale ?? 1;
+  const storeNameScale = content.storeNameScale ?? 1;
+  const brandAlign = content.brandAlign ?? "auto";
+  const brandOffsetX = content.brandOffsetX ?? 0;
+  const brandOffsetY = content.brandOffsetY ?? 0;
+  const storeNameOffsetX = content.storeNameOffsetX ?? 0;
+  const storeNameOffsetY = content.storeNameOffsetY ?? 0;
+  const hasBrandCustom =
+    logoScale !== 1 ||
+    storeNameScale !== 1 ||
+    brandAlign !== "auto" ||
+    brandOffsetX !== 0 ||
+    brandOffsetY !== 0 ||
+    storeNameOffsetX !== 0 ||
+    storeNameOffsetY !== 0;
+
+  return (
+    <Section
+      title="Store Logo & Shop Name (Size & Position)"
+      action={
+        hasBrandCustom ? (
+          <button
+            type="button"
+            onClick={() =>
+              set({
+                logoScale: 1,
+                storeNameScale: 1,
+                brandAlign: "auto",
+                brandOffsetX: 0,
+                brandOffsetY: 0,
+                storeNameOffsetX: 0,
+                storeNameOffsetY: 0,
+              })
+            }
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-brand-700 hover:bg-brand-50"
+          >
+            <RotateCcw className="size-3.5" />
+            Reset
+          </button>
+        ) : null
+      }
+    >
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+          <Switch checked={content.showLogo} onChange={(showLogo) => set({ showLogo })} label="Show store logo" />
+          <Switch checked={content.showStoreName ?? true} onChange={(showStoreName) => set({ showStoreName })} label="Show shop name" />
+        </div>
+        <Slider
+          label="Logo size"
+          min={0.4}
+          max={2.2}
+          step={0.05}
+          value={logoScale}
+          display={`${Math.round(logoScale * 100)}%`}
+          onChange={(v) => set({ logoScale: v })}
+        />
+        <Slider
+          label="Shop name size"
+          min={0.4}
+          max={2.2}
+          step={0.05}
+          value={storeNameScale}
+          display={`${Math.round(storeNameScale * 100)}%`}
+          onChange={(v) => set({ storeNameScale: v })}
+        />
+        <div className="space-y-1.5">
+          <span className="block text-xs font-medium text-gray-800">Quick position</span>
+          <div className="grid grid-cols-4 gap-1.5" role="radiogroup" aria-label="Logo and shop name position">
+            {(
+              [
+                ["auto", "Default"],
+                ["left", "Left"],
+                ["center", "Center"],
+                ["right", "Right"],
+              ] as Array<[BrandAlign, string]>
+            ).map(([align, label]) => (
+              <button
+                key={align}
+                type="button"
+                role="radio"
+                aria-checked={brandAlign === align}
+                onClick={() => set({ brandAlign: align })}
+                className={cx(
+                  "rounded-lg px-2 py-1.5 text-xs font-medium ring-1 transition-colors",
+                  brandAlign === align ? "bg-brand-600 text-white ring-brand-600" : "bg-white text-gray-700 ring-gray-200 hover:bg-gray-50",
+                )}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Slider
+            label="Logo & Name X"
+            min={-450}
+            max={450}
+            step={5}
+            value={brandOffsetX}
+            display={`${brandOffsetX}px`}
+            onChange={(v) => set({ brandOffsetX: v })}
+          />
+          <Slider
+            label="Logo & Name Y"
+            min={-250}
+            max={250}
+            step={5}
+            value={brandOffsetY}
+            display={`${brandOffsetY}px`}
+            onChange={(v) => set({ brandOffsetY: v })}
+          />
+        </div>
+        <div className="grid grid-cols-2 gap-2.5">
+          <Slider
+            label="Shop Name Extra X"
+            min={-300}
+            max={300}
+            step={5}
+            value={storeNameOffsetX}
+            display={`${storeNameOffsetX}px`}
+            onChange={(v) => set({ storeNameOffsetX: v })}
+          />
+          <Slider
+            label="Shop Name Extra Y"
+            min={-200}
+            max={200}
+            step={5}
+            value={storeNameOffsetY}
+            display={`${storeNameOffsetY}px`}
+            onChange={(v) => set({ storeNameOffsetY: v })}
+          />
+        </div>
+        <p className="text-[11px] text-gray-500">Tip: You can also drag the store logo & name directly on the poster canvas.</p>
+      </div>
+    </Section>
+  );
+}
+
 // ---------------- Layout ----------------
 
-export function LayoutPanel({ poster, update, pages }: { poster: Poster; update: Update; pages: number }) {
+export function LayoutPanel({
+  poster,
+  items,
+  selectedId,
+  onSelect,
+  update,
+  pages,
+}: {
+  poster: Poster;
+  items: ResolvedItem[];
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+  update: Update;
+  pages: number;
+}) {
   const { layout, style } = poster;
   const setLayout = (patch: Partial<Poster["layout"]>) => update({ layout: { ...layout, ...patch } });
   const setStyle = (patch: Partial<PosterStyle>) => update({ style: { ...style, ...patch } });
+  const cardWidthScale = layout.cardWidthScale ?? 1;
+  const cardHeightScale = layout.cardHeightScale ?? 1;
+  const activeCardId = selectedId && items.some((i) => i.id === selectedId) ? selectedId : (items[0]?.id ?? null);
+  const activeRaw = activeCardId ? poster.items.find((i) => i.id === activeCardId) : undefined;
+  const patchActiveCard = (patch: Partial<PosterItem>) => {
+    if (!activeCardId) return;
+    update({ items: poster.items.map((it) => (it.id === activeCardId ? { ...it, ...patch } : it)) });
+  };
+  const singleCardCustom =
+    Boolean(activeRaw) &&
+    ((activeRaw?.widthScale !== undefined && activeRaw.widthScale !== 1) ||
+      (activeRaw?.heightScale !== undefined && activeRaw.heightScale !== 1) ||
+      (activeRaw?.imageScale !== undefined && activeRaw.imageScale !== 1) ||
+      Boolean(activeRaw?.offsetX) ||
+      Boolean(activeRaw?.offsetY));
+
   return (
     <div>
       <Section title="Size">
@@ -436,7 +687,10 @@ export function LayoutPanel({ poster, update, pages }: { poster: Poster; update:
           })}
         </div>
       </Section>
-      <Section title="Grid">
+
+      <BrandSizeAndPositionSection poster={poster} update={update} />
+
+      <Section title="Grid & Header">
         <div className="grid grid-cols-2 gap-3">
           <Field label="Columns">
             {(p) => (
@@ -468,15 +722,6 @@ export function LayoutPanel({ poster, update, pages }: { poster: Poster; update:
         </p>
         <Slider label="Space between cards" min={0} max={60} value={layout.gap} onChange={(gap) => setLayout({ gap })} />
         <Slider
-          label="Product image size"
-          min={0.6}
-          max={1.4}
-          step={0.05}
-          value={layout.imageScale}
-          display={`${Math.round(layout.imageScale * 100)}%`}
-          onChange={(imageScale) => setLayout({ imageScale })}
-        />
-        <Slider
           label="Header height"
           min={0.7}
           max={1.5}
@@ -492,9 +737,141 @@ export function LayoutPanel({ poster, update, pages }: { poster: Poster; update:
           description="Makes the first product 2 columns wide on page 1"
         />
       </Section>
-      <Section title="Cards">
+
+      <Section
+        title="All Product Cards (Width & Height)"
+        action={
+          cardWidthScale !== 1 || cardHeightScale !== 1 || layout.imageScale !== 1 ? (
+            <button
+              type="button"
+              onClick={() => setLayout({ cardWidthScale: 1, cardHeightScale: 1, imageScale: 1 })}
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-brand-700 hover:bg-brand-50"
+            >
+              <RotateCcw className="size-3.5" />
+              Reset
+            </button>
+          ) : null
+        }
+      >
+        <Slider
+          label="All cards width"
+          min={0.5}
+          max={1.35}
+          step={0.05}
+          value={cardWidthScale}
+          display={`${Math.round(cardWidthScale * 100)}%`}
+          onChange={(v) => setLayout({ cardWidthScale: v })}
+        />
+        <Slider
+          label="All cards height"
+          min={0.5}
+          max={1.35}
+          step={0.05}
+          value={cardHeightScale}
+          display={`${Math.round(cardHeightScale * 100)}%`}
+          onChange={(v) => setLayout({ cardHeightScale: v })}
+        />
+        <Slider
+          label="All product images size"
+          min={0.6}
+          max={1.4}
+          step={0.05}
+          value={layout.imageScale}
+          display={`${Math.round(layout.imageScale * 100)}%`}
+          onChange={(imageScale) => setLayout({ imageScale })}
+        />
         <Slider label="Corner roundness" min={0} max={48} value={style.cardRadius} onChange={(cardRadius) => setStyle({ cardRadius })} />
         <Switch checked={style.cardShadow} onChange={(cardShadow) => setStyle({ cardShadow })} label="Card shadow" />
+      </Section>
+
+      <Section
+        title="Single Card Size & Position"
+        action={
+          singleCardCustom ? (
+            <button
+              type="button"
+              onClick={() =>
+                patchActiveCard({
+                  widthScale: undefined,
+                  heightScale: undefined,
+                  imageScale: undefined,
+                  offsetX: undefined,
+                  offsetY: undefined,
+                })
+              }
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-brand-700 hover:bg-brand-50"
+            >
+              <RotateCcw className="size-3.5" />
+              Reset card
+            </button>
+          ) : null
+        }
+      >
+        {items.length === 0 ? (
+          <p className="text-xs text-gray-500">Add products to this poster to customize individual card width, height, and position.</p>
+        ) : (
+          <div className="space-y-3">
+            <Field label="Select product card to resize / move" hint="Or tap any product card directly on the poster">
+              {(p) => (
+                <Select {...p} value={activeCardId ?? ""} onChange={(e) => onSelect(e.target.value || null)}>
+                  {items.map((it, idx) => (
+                    <option key={it.id} value={it.id}>
+                      #{idx + 1} — {it.name} ({formatPrice(it.offerPrice)})
+                    </option>
+                  ))}
+                </Select>
+              )}
+            </Field>
+            <Slider
+              label="Single card width"
+              min={0.5}
+              max={1.8}
+              step={0.05}
+              value={activeRaw?.widthScale ?? 1}
+              display={`${Math.round((activeRaw?.widthScale ?? 1) * 100)}%`}
+              onChange={(widthScale) => patchActiveCard({ widthScale })}
+            />
+            <Slider
+              label="Single card height"
+              min={0.5}
+              max={1.8}
+              step={0.05}
+              value={activeRaw?.heightScale ?? 1}
+              display={`${Math.round((activeRaw?.heightScale ?? 1) * 100)}%`}
+              onChange={(heightScale) => patchActiveCard({ heightScale })}
+            />
+            <Slider
+              label="Single card image size"
+              min={0.5}
+              max={1.8}
+              step={0.05}
+              value={activeRaw?.imageScale ?? 1}
+              display={`${Math.round((activeRaw?.imageScale ?? 1) * 100)}%`}
+              onChange={(imageScale) => patchActiveCard({ imageScale })}
+            />
+            <div className="grid grid-cols-2 gap-2.5">
+              <Slider
+                label="Card Position X"
+                min={-300}
+                max={300}
+                step={5}
+                value={activeRaw?.offsetX ?? 0}
+                display={`${activeRaw?.offsetX ?? 0}px`}
+                onChange={(offsetX) => patchActiveCard({ offsetX })}
+              />
+              <Slider
+                label="Card Position Y"
+                min={-300}
+                max={300}
+                step={5}
+                value={activeRaw?.offsetY ?? 0}
+                display={`${activeRaw?.offsetY ?? 0}px`}
+                onChange={(offsetY) => patchActiveCard({ offsetY })}
+              />
+            </div>
+            <p className="text-[11px] text-gray-500">Tip: Drag any product card directly on the poster preview to move it freely.</p>
+          </div>
+        )}
       </Section>
     </div>
   );
@@ -922,6 +1299,7 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
 
   return (
     <div>
+      <BrandSizeAndPositionSection poster={poster} update={update} />
       <Section title="Headline">
         <Field label="Small line above" hint="e.g. Weekend, Today only">
           {(p) => <Input {...p} value={content.kicker} onChange={(e) => set({ kicker: e.target.value })} placeholder="e.g. Weekend…" maxLength={40} />}

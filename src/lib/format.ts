@@ -80,6 +80,11 @@ export function resolveItems(items: PosterItem[], products: Product[]): Resolved
       normalPrice: item.normalPrice ?? product.normalPrice,
       offerPrice: item.offerPrice ?? product.offerPrice,
       tag: item.tag?.trim() || undefined,
+      widthScale: item.widthScale,
+      heightScale: item.heightScale,
+      imageScale: item.imageScale,
+      offsetX: item.offsetX,
+      offsetY: item.offsetY,
     });
   }
   return out;
