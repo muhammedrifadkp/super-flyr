@@ -233,3 +233,84 @@ export function encodeQrMatrix(text: string): boolean[][] {
   return modules;
 }
 
+/** Converts a QR matrix into an SVG `<path d="...">` string (with a quiet zone of `margin` modules). */
+export function qrMatrixToSvgPath(matrix: boolean[][], margin = 2): { path: string; size: number } {
+  const N = matrix.length;
+  let path = "";
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      if (matrix[r][c]) {
+        path += `M${c + margin},${r + margin}h1v1h-1z`;
+      }
+    }
+  }
+  return { path, size: N + margin * 2 };
+}
+
+/** Renders a high-resolution printable/shareable QR code card PNG for a public offer link. */
+export async function renderQrCardPng(url: string, title: string, storeName?: string): Promise<Blob> {
+  const matrix = encodeQrMatrix(url);
+  const N = matrix.length;
+  const W = 800;
+  const H = 980;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d")!;
+
+  // Card background
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, W, H);
+
+  // Decorative top header band
+  ctx.fillStyle = "#15803d";
+  ctx.fillRect(0, 0, W, 170);
+
+  // Store name & offer title
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#dcfce7";
+  ctx.font = "600 24px system-ui, -apple-system, sans-serif";
+  ctx.fillText((storeName || "TODAY'S SPECIAL OFFERS").slice(0, 40), W / 2, 62);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.font = "800 40px system-ui, -apple-system, sans-serif";
+  ctx.fillText((title || "Scan for Today's Offers").slice(0, 34), W / 2, 122);
+
+  // QR Box frame
+  const qrBoxSize = 560;
+  const qrBoxX = (W - qrBoxSize) / 2;
+  const qrBoxY = 220;
+  ctx.strokeStyle = "#e5e7eb";
+  ctx.lineWidth = 4;
+  ctx.strokeRect(qrBoxX, qrBoxY, qrBoxSize, qrBoxSize);
+
+  const margin = 3;
+  const cell = qrBoxSize / (N + margin * 2);
+  ctx.fillStyle = "#111827";
+  for (let r = 0; r < N; r++) {
+    for (let c = 0; c < N; c++) {
+      if (matrix[r][c]) {
+        ctx.fillRect(
+          Math.floor(qrBoxX + (c + margin) * cell),
+          Math.floor(qrBoxY + (r + margin) * cell),
+          Math.ceil(cell),
+          Math.ceil(cell),
+        );
+      }
+    }
+  }
+
+  // Footer instructions
+  ctx.fillStyle = "#111827";
+  ctx.font = "700 28px system-ui, -apple-system, sans-serif";
+  ctx.fillText("📱 Scan QR Code to View Offers & Order on WhatsApp", W / 2, 845);
+
+  ctx.fillStyle = "#6b7280";
+  ctx.font = "500 20px ui-monospace, SFMono-Regular, Menlo, monospace";
+  ctx.fillText(url.slice(0, 64), W / 2, 895);
+
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => (blob ? resolve(blob) : reject(new Error("Could not render QR image."))), "image/png");
+  });
+}
+

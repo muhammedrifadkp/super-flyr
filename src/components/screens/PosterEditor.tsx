@@ -449,12 +449,14 @@ function EditorInner({
         open={dialog === "share"}
         onClose={() => setDialog(null)}
         poster={poster}
+        store={store}
         baseName={baseName}
         renderPages={renderPages}
         onPublish={async (published) => {
           update({ published });
           await save();
         }}
+        onTogglePosterQr={(showQr) => update({ content: { ...poster.content, showQr } })}
       />
     </div>
   );

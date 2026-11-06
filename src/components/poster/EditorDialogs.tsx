@@ -1,10 +1,11 @@
 "use client";
 
-import { Copy, ExternalLink, FileImage, FileText, Image as ImageIcon, MessageCircle, Printer, Share2, Tag, Tv } from "lucide-react";
-import { useState } from "react";
+import { Copy, Download, ExternalLink, FileImage, FileText, Image as ImageIcon, MessageCircle, Printer, QrCode, Share2, Tag, Tv } from "lucide-react";
+import { useMemo, useState } from "react";
 import { buildPdf, downloadBlob, downloadImages, maxPixelRatio, printPages, renderShelfTagPages, sharePages } from "@/lib/client/export";
 import { useCanShareFiles, useOrigin } from "@/lib/client/useOrigin";
 import { formatValidity } from "@/lib/format";
+import { encodeQrMatrix, qrMatrixToSvgPath, renderQrCardPng } from "@/lib/poster/qr";
 import { FORMATS } from "@/lib/poster/templates";
 import type { Poster, ResolvedItem, Store } from "@/lib/types";
 import { Dialog } from "../Dialog";
@@ -174,26 +175,47 @@ export function ExportDialog({
   );
 }
 
+export function PublicQrSvg({ url, className = "size-36" }: { url: string; className?: string }) {
+  const { path, size } = useMemo(() => qrMatrixToSvgPath(encodeQrMatrix(url), 2), [url]);
+  return (
+    <svg
+      viewBox={`0 0 ${size} ${size}`}
+      shapeRendering="crispEdges"
+      role="img"
+      aria-label={`QR code for ${url}`}
+      className={cx("rounded-xl bg-white p-1.5 shadow-sm ring-1 ring-gray-200", className)}
+    >
+      <rect width={size} height={size} fill="#ffffff" />
+      <path d={path} fill="#111827" />
+    </svg>
+  );
+}
+
 export function ShareDialog({
   open,
   onClose,
   poster,
+  store,
   baseName,
   renderPages,
   onPublish,
+  onTogglePosterQr,
 }: {
   open: boolean;
   onClose: () => void;
   poster: Poster;
+  store?: Store;
   baseName: string;
   renderPages: RenderPages;
   onPublish: (published: boolean) => Promise<void>;
+  onTogglePosterQr?: (showQr: boolean) => void;
 }) {
   const toast = useToast();
   const origin = useOrigin();
   const canShareFiles = useCanShareFiles();
   const [publishing, setPublishing] = useState(false);
   const [sharing, setSharing] = useState(false);
+  const [downloadingQr, setDownloadingQr] = useState(false);
 
   const url = `${origin}/o/${poster.slug}`;
   const message = `${poster.content.headline || poster.title} – see today's offers & order on WhatsApp: ${url}`;
@@ -202,9 +224,22 @@ export function ShareDialog({
     setPublishing(true);
     try {
       await onPublish(next);
-      toast.success(next ? "Published. Customers can open the link & order on WhatsApp now." : "Unpublished. The link is hidden.");
+      toast.success(next ? "Published. Customers can scan the QR code or open the link now." : "Unpublished. The link is hidden.");
     } finally {
       setPublishing(false);
+    }
+  }
+
+  async function downloadQrPng() {
+    setDownloadingQr(true);
+    try {
+      const blob = await renderQrCardPng(url, poster.content.headline || poster.title, store?.name);
+      downloadBlob(blob, `${baseName}-qr-code.png`);
+      toast.success("QR code downloaded.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not download QR code.");
+    } finally {
+      setDownloadingQr(false);
     }
   }
 
@@ -229,12 +264,12 @@ export function ShareDialog({
             checked={poster.published}
             onChange={togglePublish}
             label={publishing ? "Updating…" : "Public offer & WhatsApp ordering page"}
-            description="Customers can view offers, add items to cart, and send their order directly to your WhatsApp!"
+            description="Customers can scan the QR code or open the link to view offers & order on WhatsApp!"
           />
         </div>
 
         {poster.published ? (
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="flex items-center gap-2">
               <code className="min-w-0 flex-1 truncate rounded-lg bg-gray-100 px-3 py-2.5 text-sm" translate="no">
                 {url}
@@ -249,6 +284,37 @@ export function ShareDialog({
                 Copy
               </Button>
             </div>
+
+            {/* Scannable QR Code Card */}
+            <div className="flex flex-col items-center gap-4 rounded-xl bg-brand-50/60 p-4 ring-1 ring-brand-200 sm:flex-row sm:items-start">
+              <PublicQrSvg url={url} className="size-36 shrink-0" />
+              <div className="min-w-0 flex-1 space-y-2.5 text-center sm:text-left">
+                <div>
+                  <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-gray-950">
+                    <QrCode className="size-4 text-brand-700" aria-hidden="true" />
+                    Customer Scan QR Code
+                  </p>
+                  <p className="mt-0.5 text-xs text-gray-600">
+                    Customers can scan this QR code with their phone camera to view all product offers and send their order on WhatsApp.
+                  </p>
+                </div>
+                <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
+                  <Button size="sm" variant="primary" icon={<Download className="size-4" />} onClick={downloadQrPng} loading={downloadingQr}>
+                    Download QR Card
+                  </Button>
+                </div>
+                {onTogglePosterQr ? (
+                  <div className="pt-1 text-left">
+                    <Switch
+                      checked={Boolean(poster.content.showQr)}
+                      onChange={onTogglePosterQr}
+                      label="Also print this QR code on the poster footer"
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
             <div className="grid gap-2 sm:grid-cols-3">
               <a
                 href={`https://wa.me/?text=${encodeURIComponent(message)}`}
@@ -277,7 +343,7 @@ export function ShareDialog({
             </div>
           </div>
         ) : (
-          <p className="text-sm text-gray-600">Turn on the public page to get a link you can send to customers and show on your shop Smart TV.</p>
+          <p className="text-sm text-gray-600">Turn on the public page to get a scannable QR code & link you can send to customers and show on your shop Smart TV.</p>
         )}
 
         <div className="border-t border-gray-100 pt-4">

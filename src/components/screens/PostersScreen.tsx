@@ -1,13 +1,18 @@
 "use client";
 
-import { Copy, CopyPlus, Globe, ImagePlus, MoreVertical, Plus, Trash2 } from "lucide-react";
+import { Copy, CopyPlus, Download, Globe, ImagePlus, MoreVertical, Plus, QrCode, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api, usePosters, useProducts, useStore } from "@/lib/client/api";
-import { formatValidity, isExpired } from "@/lib/format";
+import { downloadBlob } from "@/lib/client/export";
+import { useOrigin } from "@/lib/client/useOrigin";
+import { formatValidity, isExpired, slugify } from "@/lib/format";
+import { renderQrCardPng } from "@/lib/poster/qr";
 import type { Poster, Product, Store } from "@/lib/types";
 import { useConfirm } from "../Confirm";
+import { Dialog } from "../Dialog";
+import { PublicQrSvg } from "../poster/EditorDialogs";
 import { PosterThumb } from "../poster/PosterThumb";
 import { useToast } from "../Toast";
 import { Button, ButtonLink, EmptyState, IconButton, PageHeader, Skeleton, cx } from "../ui";
@@ -21,6 +26,9 @@ export function PostersScreen() {
   const router = useRouter();
   const toast = useToast();
   const confirm = useConfirm();
+  const origin = useOrigin();
+  const [qrPoster, setQrPoster] = useState<Poster | null>(null);
+  const [downloadingQr, setDownloadingQr] = useState(false);
 
   async function duplicate(poster: Poster) {
     try {
@@ -101,10 +109,55 @@ export function PostersScreen() {
                 await navigator.clipboard.writeText(`${window.location.origin}/o/${poster.slug}`);
                 toast.success("Public link copied.");
               }}
+              onShowQr={() => setQrPoster(poster)}
             />
           ))}
         </ul>
       )}
+      {qrPoster ? (
+        <Dialog
+          open={Boolean(qrPoster)}
+          onClose={() => setQrPoster(null)}
+          title={qrPoster.title}
+          description="Customers can scan this QR code to view today's offers & order on WhatsApp."
+          footer={<Button onClick={() => setQrPoster(null)}>Done</Button>}
+        >
+          <div className="flex flex-col items-center gap-4 py-2 text-center">
+            <PublicQrSvg url={`${origin}/o/${qrPoster.slug}`} className="size-48" />
+            <code className="max-w-full truncate rounded-lg bg-gray-100 px-3 py-1.5 text-xs text-gray-800" translate="no">
+              {`${origin}/o/${qrPoster.slug}`}
+            </code>
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button
+                variant="primary"
+                icon={<Download className="size-4" />}
+                loading={downloadingQr}
+                onClick={async () => {
+                  setDownloadingQr(true);
+                  try {
+                    const blob = await renderQrCardPng(`${origin}/o/${qrPoster.slug}`, qrPoster.content.headline || qrPoster.title, store?.name);
+                    downloadBlob(blob, `${slugify(qrPoster.title)}-qr-code.png`);
+                    toast.success("QR code downloaded.");
+                  } finally {
+                    setDownloadingQr(false);
+                  }
+                }}
+              >
+                Download QR Card
+              </Button>
+              <Button
+                icon={<Copy className="size-4" />}
+                onClick={async () => {
+                  await navigator.clipboard.writeText(`${origin}/o/${qrPoster.slug}`);
+                  toast.success("Public link copied.");
+                }}
+              >
+                Copy Link
+              </Button>
+            </div>
+          </div>
+        </Dialog>
+      ) : null}
     </div>
   );
 }
@@ -116,6 +169,7 @@ function PosterCard({
   onDuplicate,
   onDelete,
   onCopyLink,
+  onShowQr,
 }: {
   poster: Poster;
   store?: Store;
@@ -123,6 +177,7 @@ function PosterCard({
   onDuplicate: () => void;
   onDelete: () => void;
   onCopyLink: () => void;
+  onShowQr: () => void;
 }) {
   const expired = isExpired(poster.content.validTo);
   const validity = formatValidity(poster.content.validFrom, poster.content.validTo);
@@ -150,11 +205,21 @@ function PosterCard({
               {poster.published ? <Globe className="size-3" aria-hidden="true" /> : null}
               {poster.published ? "Published" : "Draft"}
             </span>
+            {poster.published ? (
+              <button
+                type="button"
+                onClick={onShowQr}
+                className="inline-flex items-center gap-1 rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-medium text-gray-800 hover:bg-gray-200"
+              >
+                <QrCode className="size-3" aria-hidden="true" />
+                QR
+              </button>
+            ) : null}
             {expired ? <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">Ended</span> : null}
           </div>
           <p className="mt-1.5 text-[11px] text-gray-400">Edited {updatedFormat.format(new Date(poster.updatedAt))}</p>
         </div>
-        <CardMenu poster={poster} onDuplicate={onDuplicate} onDelete={onDelete} onCopyLink={onCopyLink} />
+        <CardMenu poster={poster} onDuplicate={onDuplicate} onDelete={onDelete} onCopyLink={onCopyLink} onShowQr={onShowQr} />
       </div>
     </li>
   );
@@ -165,11 +230,13 @@ function CardMenu({
   onDuplicate,
   onDelete,
   onCopyLink,
+  onShowQr,
 }: {
   poster: Poster;
   onDuplicate: () => void;
   onDelete: () => void;
   onCopyLink: () => void;
+  onShowQr: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -226,9 +293,14 @@ function CardMenu({
             <CopyPlus className="size-4" aria-hidden="true" /> Duplicate
           </button>
           {poster.published ? (
-            <button type="button" role="menuitem" className={item} onClick={run(onCopyLink)}>
-              <Copy className="size-4" aria-hidden="true" /> Copy public link
-            </button>
+            <>
+              <button type="button" role="menuitem" className={item} onClick={run(onShowQr)}>
+                <QrCode className="size-4" aria-hidden="true" /> Show QR code
+              </button>
+              <button type="button" role="menuitem" className={item} onClick={run(onCopyLink)}>
+                <Copy className="size-4" aria-hidden="true" /> Copy public link
+              </button>
+            </>
           ) : null}
           <button type="button" role="menuitem" className={cx(item, "text-red-700 hover:bg-red-50 focus:bg-red-50")} onClick={run(onDelete)}>
             <Trash2 className="size-4" aria-hidden="true" /> Delete…
