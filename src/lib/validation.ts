@@ -69,6 +69,7 @@ export const posterItemSchema = z.object({
   name: text(80).optional(),
   nameMl: text(80).optional(),
   unit: text(20).optional(),
+  imageUrl: imageUrl.optional(),
   normalPrice: price.optional(),
   offerPrice: price.optional(),
   tag: text(24).optional(),

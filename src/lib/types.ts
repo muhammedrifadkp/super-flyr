@@ -85,6 +85,7 @@ export interface PosterItem {
   name?: string;
   nameMl?: string;
   unit?: string;
+  imageUrl?: string;
   normalPrice?: number;
   offerPrice?: number;
   /** Optional custom badge label for this item, e.g. "BUY 1 GET 1" or "COMBO". */

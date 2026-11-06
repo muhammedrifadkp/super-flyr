@@ -254,15 +254,15 @@ export function matchStudioProductUrl(name: string, nameMl?: string): string | n
 }
 
 /**
- * Resolves the best product image URL, upgrading legacy generated emoji blobs to real studio cutouts
- * while preserving user-uploaded custom product photos.
+ * Resolves the product image URL: always uses the product's saved `imageUrl` when present,
+ * and falls back to the studio cutout catalogue only when `imageUrl` is empty.
  */
 export function resolveProductImageUrl(product: { name: string; nameMl?: string; imageUrl?: string }): string {
   const raw = product.imageUrl?.trim() ?? "";
-  if (raw.startsWith("/poster-assets/") || raw.includes("custom-")) {
+  if (raw) {
     return raw;
   }
-  return matchStudioProductUrl(product.name, product.nameMl) ?? raw;
+  return matchStudioProductUrl(product.name, product.nameMl) ?? "";
 }
 
 

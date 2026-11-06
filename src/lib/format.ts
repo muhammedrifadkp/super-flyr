@@ -76,7 +76,7 @@ export function resolveItems(items: PosterItem[], products: Product[]): Resolved
       nameMl: item.nameMl?.trim() ?? product.nameMl,
       unit: item.unit?.trim() ?? product.unit,
       category: product.category,
-      imageUrl: resolveProductImageUrl(product),
+      imageUrl: item.imageUrl?.trim() || resolveProductImageUrl(product),
       normalPrice: item.normalPrice ?? product.normalPrice,
       offerPrice: item.offerPrice ?? product.offerPrice,
       tag: item.tag?.trim() || undefined,

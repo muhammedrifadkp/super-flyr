@@ -275,6 +275,8 @@ function PosterItemRow({
   onPatch: (patch: Partial<PosterItem>) => void;
 }) {
   const ref = useRef<HTMLLIElement>(null);
+  const [uploadingImg, setUploadingImg] = useState(false);
+  const [imgKey, setImgKey] = useState(0);
   useEffect(() => {
     if (open) ref.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [open]);
@@ -282,6 +284,7 @@ function PosterItemRow({
     raw.name !== undefined ||
     raw.nameMl !== undefined ||
     raw.unit !== undefined ||
+    raw.imageUrl !== undefined ||
     raw.normalPrice !== undefined ||
     raw.offerPrice !== undefined ||
     Boolean(raw.tag);
@@ -298,6 +301,22 @@ function PosterItemRow({
     const n = Number(value.replace(/[₹,\s]/g, ""));
     return value.trim() === "" || !Number.isFinite(n) || n < 0 ? undefined : n;
   };
+
+  async function uploadItemImage(image: PendingImage | null | "remove") {
+    if (image === null) return;
+    if (image === "remove") {
+      onPatch({ imageUrl: undefined });
+      return;
+    }
+    setUploadingImg(true);
+    try {
+      const url = await api.upload(image.blob, item.name);
+      onPatch({ imageUrl: url });
+      setImgKey((k) => k + 1);
+    } finally {
+      setUploadingImg(false);
+    }
+  }
 
   return (
     <li ref={ref} className={cx("rounded-lg ring-1", open ? "bg-white ring-brand-300" : "bg-white ring-gray-200")}>
@@ -371,11 +390,25 @@ function PosterItemRow({
                 size="sm"
                 variant="ghost"
                 icon={<RotateCcw className="size-4" />}
-                onClick={() => onPatch({ name: undefined, nameMl: undefined, unit: undefined, normalPrice: undefined, offerPrice: undefined, tag: undefined })}
+                onClick={() =>
+                  onPatch({
+                    name: undefined,
+                    nameMl: undefined,
+                    unit: undefined,
+                    imageUrl: undefined,
+                    normalPrice: undefined,
+                    offerPrice: undefined,
+                    tag: undefined,
+                  })
+                }
               >
                 Use library values
               </Button>
             ) : null}
+          </div>
+          <div className="col-span-2">
+            <ImageUploader key={imgKey} label="Product photo on this poster" currentUrl={item.imageUrl} onChange={uploadItemImage} />
+            {uploadingImg ? <p className="mt-1 text-xs text-gray-600" aria-live="polite">Uploading photo…</p> : null}
           </div>
           <div className="col-span-2 space-y-1.5">
             <Field label="Special badge on this card" hint="Overrides the discount % badge (e.g. BUY 1 GET 1)">
