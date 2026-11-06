@@ -200,6 +200,7 @@ export function ShareDialog({
   renderPages,
   onPublish,
   onTogglePosterQr,
+  onToggleShowOnTv,
 }: {
   open: boolean;
   onClose: () => void;
@@ -209,6 +210,7 @@ export function ShareDialog({
   renderPages: RenderPages;
   onPublish: (published: boolean) => Promise<void>;
   onTogglePosterQr?: (showQr: boolean) => void;
+  onToggleShowOnTv?: (showOnTv: boolean) => void;
 }) {
   const toast = useToast();
   const origin = useOrigin();
@@ -338,18 +340,50 @@ export function ShareDialog({
                 <ExternalLink className="size-4" aria-hidden="true" /> Offer Page
               </a>
               <a
-                href="/tv"
+                href={`/tv?poster=${poster.id}`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-medium text-gray-900 ring-1 ring-gray-300 hover:bg-gray-50"
+                className="inline-flex h-11 items-center justify-center gap-2 rounded-lg bg-slate-900 px-3 text-sm font-medium text-white hover:bg-slate-800"
               >
-                <Tv className="size-4" aria-hidden="true" /> Smart TV Mode
+                <Tv className="size-4" aria-hidden="true" /> TV Show
               </a>
             </div>
           </div>
         ) : (
-          <p className="text-sm text-gray-600">Turn on the public page to get a scannable QR code & link you can send to customers and show on your shop Smart TV.</p>
+          <p className="text-sm text-gray-600">Turn on the public page to get a scannable QR code & link you can send to customers.</p>
         )}
+
+        <div className="rounded-xl bg-slate-950 p-3.5 text-white ring-1 ring-slate-800">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="inline-flex items-center gap-1.5 text-sm font-semibold text-white">
+                <Tv className="size-4 text-emerald-400" aria-hidden="true" />
+                TV Show & Multi-Page Slideshow
+              </p>
+              <p className="mt-0.5 text-xs text-slate-300">
+                Open this poster in full-screen TV mode and play all its pages as an automatic slideshow.
+              </p>
+            </div>
+            <a
+              href={`/tv?poster=${poster.id}`}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-emerald-600 px-3.5 text-xs font-bold text-white hover:bg-emerald-500"
+            >
+              <Tv className="size-3.5" aria-hidden="true" />
+              Open TV Show
+            </a>
+          </div>
+          {onToggleShowOnTv ? (
+            <div className="mt-3 border-t border-white/10 pt-2.5 [&_p]:text-slate-300 [&_span]:text-white">
+              <Switch
+                checked={Boolean(poster.content.showOnTv)}
+                onChange={onToggleShowOnTv}
+                label="Also show this poster on the main Shop TV (/tv)"
+              />
+            </div>
+          ) : null}
+        </div>
 
         <div className="border-t border-gray-100 pt-4">
           <h3 className="text-sm font-medium text-gray-800">Share the poster image</h3>

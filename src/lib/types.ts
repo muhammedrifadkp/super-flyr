@@ -230,6 +230,8 @@ export interface PosterContent {
   showHero: boolean;
   /** Shows a scannable QR code on the poster footer linking to the online offer page / WhatsApp. */
   showQr?: boolean;
+  /** Whether this poster is selected to play on the main Admin Smart TV display (/tv). */
+  showOnTv?: boolean;
 }
 
 export interface Poster {

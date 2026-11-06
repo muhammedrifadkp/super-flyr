@@ -514,6 +514,10 @@ function EditorInner({
           await save();
         }}
         onTogglePosterQr={(showQr) => update({ content: { ...poster.content, showQr } })}
+        onToggleShowOnTv={(showOnTv) => {
+          update({ content: { ...poster.content, showOnTv } });
+          toast.success(showOnTv ? "Added to Shop TV display." : "Removed from Shop TV display.");
+        }}
       />
     </div>
   );

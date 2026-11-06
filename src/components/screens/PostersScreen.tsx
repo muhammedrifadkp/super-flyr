@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, CopyPlus, Download, Globe, ImagePlus, MoreVertical, Plus, QrCode, Trash2 } from "lucide-react";
+import { Copy, CopyPlus, Download, Globe, ImagePlus, MoreVertical, Plus, QrCode, Trash2, Tv } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -62,15 +62,44 @@ export function PostersScreen() {
     }
   }
 
+  async function toggleTv(poster: Poster) {
+    const nextVal = !poster.content.showOnTv;
+    const nextContent = { ...poster.content, showOnTv: nextVal };
+    const optimistic = (posters ?? []).map((p) => (p.id === poster.id ? { ...p, content: nextContent } : p));
+    try {
+      await mutate(
+        async () => {
+          await api.patch(`/api/posters/${poster.id}`, { content: nextContent });
+          return optimistic;
+        },
+        { optimisticData: optimistic, rollbackOnError: true, revalidate: false },
+      );
+      toast.success(nextVal ? `“${poster.title}” added to Shop TV display.` : `“${poster.title}” removed from Shop TV display.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update TV setting.");
+    }
+  }
+
   return (
     <div className="mx-auto w-full max-w-6xl p-4 md:p-8">
       <PageHeader
         title="Posters"
         description="Create, edit and share your offer posters."
         actions={
-          <ButtonLink href="/dashboard/posters/new" variant="primary" icon={<Plus className="size-4" />}>
-            New poster
-          </ButtonLink>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="/tv"
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex h-10 items-center gap-2 rounded-lg bg-slate-900 px-3.5 text-sm font-medium text-white shadow-sm hover:bg-slate-800"
+            >
+              <Tv className="size-4 text-emerald-400" aria-hidden="true" />
+              TV Display
+            </a>
+            <ButtonLink href="/dashboard/posters/new" variant="primary" icon={<Plus className="size-4" />}>
+              New poster
+            </ButtonLink>
+          </div>
         }
       />
       {error ? (
@@ -110,6 +139,7 @@ export function PostersScreen() {
                 toast.success("Public link copied.");
               }}
               onShowQr={() => setQrPoster(poster)}
+              onToggleTv={() => void toggleTv(poster)}
             />
           ))}
         </ul>
@@ -170,6 +200,7 @@ function PosterCard({
   onDelete,
   onCopyLink,
   onShowQr,
+  onToggleTv,
 }: {
   poster: Poster;
   store?: Store;
@@ -178,6 +209,7 @@ function PosterCard({
   onDelete: () => void;
   onCopyLink: () => void;
   onShowQr: () => void;
+  onToggleTv: () => void;
 }) {
   const expired = isExpired(poster.content.validTo);
   const validity = formatValidity(poster.content.validFrom, poster.content.validTo);
@@ -215,11 +247,30 @@ function PosterCard({
                 QR
               </button>
             ) : null}
+            <button
+              type="button"
+              onClick={onToggleTv}
+              title={poster.content.showOnTv ? "Showing on Shop TV (click to remove)" : "Click to include on Shop TV"}
+              className={cx(
+                "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors",
+                poster.content.showOnTv ? "bg-slate-900 text-emerald-300" : "bg-gray-100 text-gray-700 hover:bg-gray-200",
+              )}
+            >
+              <Tv className="size-3" aria-hidden="true" />
+              {poster.content.showOnTv ? "On TV" : "TV"}
+            </button>
             {expired ? <span className="rounded-full bg-red-50 px-2 py-0.5 text-[11px] font-medium text-red-700">Ended</span> : null}
           </div>
           <p className="mt-1.5 text-[11px] text-gray-400">Edited {updatedFormat.format(new Date(poster.updatedAt))}</p>
         </div>
-        <CardMenu poster={poster} onDuplicate={onDuplicate} onDelete={onDelete} onCopyLink={onCopyLink} onShowQr={onShowQr} />
+        <CardMenu
+          poster={poster}
+          onDuplicate={onDuplicate}
+          onDelete={onDelete}
+          onCopyLink={onCopyLink}
+          onShowQr={onShowQr}
+          onToggleTv={onToggleTv}
+        />
       </div>
     </li>
   );
@@ -231,12 +282,14 @@ function CardMenu({
   onDelete,
   onCopyLink,
   onShowQr,
+  onToggleTv,
 }: {
   poster: Poster;
   onDuplicate: () => void;
   onDelete: () => void;
   onCopyLink: () => void;
   onShowQr: () => void;
+  onToggleTv: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -276,7 +329,7 @@ function CardMenu({
       {open ? (
         <div
           role="menu"
-          className="absolute bottom-full right-0 z-20 mb-1 w-48 rounded-lg bg-white p-1 shadow-lg ring-1 ring-gray-950/10"
+          className="absolute bottom-full right-0 z-20 mb-1 w-52 rounded-lg bg-white p-1 shadow-lg ring-1 ring-gray-950/10"
           onKeyDown={(e) => {
             const items = Array.from(ref.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? []);
             const index = items.indexOf(document.activeElement as HTMLElement);
@@ -289,6 +342,20 @@ function CardMenu({
             }
           }}
         >
+          <a
+            href={`/tv?poster=${poster.id}`}
+            target="_blank"
+            rel="noreferrer"
+            role="menuitem"
+            className={item}
+            onClick={() => setOpen(false)}
+          >
+            <Tv className="size-4 text-emerald-600" aria-hidden="true" /> Open TV Show
+          </a>
+          <button type="button" role="menuitem" className={item} onClick={run(onToggleTv)}>
+            <Tv className="size-4" aria-hidden="true" />
+            {poster.content.showOnTv ? "Remove from Shop TV" : "Show on Shop TV"}
+          </button>
           <button type="button" role="menuitem" className={item} onClick={run(onDuplicate)}>
             <CopyPlus className="size-4" aria-hidden="true" /> Duplicate
           </button>

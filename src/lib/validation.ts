@@ -167,6 +167,7 @@ export const posterContentSchema = z.object({
   showValidity: z.boolean(),
   showHero: z.boolean().default(true),
   showQr: z.boolean().default(false),
+  showOnTv: z.boolean().default(false),
 });
 
 export const posterPatchSchema = z
