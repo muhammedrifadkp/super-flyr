@@ -578,8 +578,13 @@ function ProductRow({
   const save = Math.max(0, Math.round(product.normalPrice - product.offerPrice));
   const resolvedImageUrl = resolveProductImageUrl(product);
   return (
-    <li className="flex flex-wrap items-center gap-3 px-3 py-3 sm:flex-nowrap sm:px-4">
-      <div className="checkerboard flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-lg ring-1 ring-gray-200">
+    <li className="flex flex-wrap items-center gap-2.5 px-3 py-3 sm:flex-nowrap sm:gap-3 sm:px-4">
+      <button
+        type="button"
+        onClick={onEdit}
+        aria-label={`Edit ${product.name}`}
+        className="checkerboard flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-lg ring-1 ring-gray-200 transition hover:ring-brand-400"
+      >
         {resolvedImageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -594,8 +599,8 @@ function ProductRow({
         ) : (
           <Package className="size-6 text-gray-300" aria-hidden="true" />
         )}
-      </div>
-      <div className="min-w-0 flex-1">
+      </button>
+      <button type="button" onClick={onEdit} className="min-w-0 flex-1 text-left">
         <p className="truncate font-medium text-gray-950">{product.name}</p>
         <p className="truncate text-sm text-gray-600">
           {product.nameMl ? (
@@ -606,13 +611,21 @@ function ProductRow({
           {product.category}
           {product.unit ? ` · ${product.unit}` : ""}
         </p>
+      </button>
+      <div className="flex sm:hidden">
+        <IconButton label={`Edit ${product.name}`} onClick={onEdit}>
+          <Pencil className="size-4" />
+        </IconButton>
+        <IconButton label={`Delete ${product.name}`} onClick={onDelete} className="hover:bg-red-50 hover:text-red-700">
+          <Trash2 className="size-4" />
+        </IconButton>
       </div>
       <div className="flex w-full items-end gap-2 sm:w-auto">
         <PriceInput label="MRP" value={product.normalPrice} onCommit={(v) => onPrice("normalPrice", v)} />
         <PriceInput label="Offer" value={product.offerPrice} onCommit={(v) => onPrice("offerPrice", v)} strong />
         <span
           className={cx(
-            "mb-1.5 w-16 shrink-0 text-center text-xs font-semibold tabular leading-tight",
+            "mb-1.5 min-w-16 flex-1 text-right text-xs font-semibold tabular leading-tight sm:w-16 sm:flex-initial sm:text-center",
             discount > 0 ? "text-red-700" : "text-gray-400",
           )}
         >
@@ -625,7 +638,7 @@ function ProductRow({
             "No offer"
           )}
         </span>
-        <div className="ml-auto flex sm:ml-0">
+        <div className="hidden sm:flex">
           <IconButton label={`Edit ${product.name}`} onClick={onEdit}>
             <Pencil className="size-4" />
           </IconButton>
@@ -660,7 +673,7 @@ function PriceInput({
   }
 
   return (
-    <label className="block w-24">
+    <label className="block w-24 flex-1 sm:flex-initial">
       <span className="mb-0.5 block text-[11px] font-medium uppercase tracking-wide text-gray-500">{label}</span>
       <span className="relative block">
         <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-500">₹</span>

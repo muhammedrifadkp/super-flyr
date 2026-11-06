@@ -46,27 +46,32 @@ export function Dialog({
       }}
       aria-labelledby="dialog-title"
       className={cx(
-        "m-auto w-[calc(100%-1.5rem)] rounded-2xl bg-white p-0 text-gray-900 shadow-2xl ring-1 ring-gray-950/10 backdrop:backdrop-blur-[2px]",
-        size === "sm" && "max-w-sm",
-        size === "md" && "max-w-lg",
-        size === "lg" && "max-w-2xl",
+        "mt-auto mb-0 w-full max-w-full rounded-t-3xl rounded-b-none bg-white p-0 text-gray-900 shadow-2xl ring-1 ring-gray-950/10 backdrop:backdrop-blur-[2px] sm:m-auto sm:w-[calc(100%-1.5rem)] sm:rounded-2xl",
+        size === "sm" && "sm:max-w-sm",
+        size === "md" && "sm:max-w-lg",
+        size === "lg" && "sm:max-w-2xl",
       )}
     >
       {open ? (
-        <div className="flex max-h-[min(90dvh,860px)] flex-col">
-          <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-5 py-4">
+        <div className="flex max-h-[min(92dvh,860px)] flex-col">
+          <div className="mx-auto mt-2 h-1.5 w-10 shrink-0 rounded-full bg-gray-300 sm:hidden" aria-hidden="true" />
+          <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-4 py-3.5 sm:px-5 sm:py-4">
             <div className="min-w-0">
-              <h2 id="dialog-title" className="text-lg font-semibold">
+              <h2 id="dialog-title" className="text-base font-semibold sm:text-lg">
                 {title}
               </h2>
-              {description ? <p className="mt-0.5 text-sm text-gray-600">{description}</p> : null}
+              {description ? <p className="mt-0.5 text-xs text-gray-600 sm:text-sm">{description}</p> : null}
             </div>
-            <IconButton label="Close" onClick={onClose} className="-mr-2 -mt-1">
+            <IconButton label="Close" onClick={onClose} className="-mr-1 -mt-1">
               <X className="size-5" />
             </IconButton>
           </div>
-          <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
-          {footer ? <div className="flex flex-wrap justify-end gap-2 border-t border-gray-100 px-5 py-3">{footer}</div> : null}
+          <div className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:px-5">{children}</div>
+          {footer ? (
+            <div className="flex flex-wrap justify-end gap-2 border-t border-gray-100 px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-5 sm:py-3">
+              {footer}
+            </div>
+          ) : null}
         </div>
       ) : null}
     </dialog>

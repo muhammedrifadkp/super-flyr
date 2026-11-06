@@ -37,10 +37,10 @@ export function HomeScreen() {
         </ButtonLink>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
         <Stat label="Products" value={products?.length} href="/dashboard/products" />
         <Stat label="On offer" value={products ? onOffer : undefined} href="/dashboard/products" />
-        <Stat label="Published posters" value={posters ? published : undefined} href="/dashboard/posters" />
+        <Stat label="Published" value={posters ? published : undefined} href="/dashboard/posters" />
       </div>
 
       <section className="mt-6 grid gap-3 sm:grid-cols-3">
@@ -175,9 +175,9 @@ export function HomeScreen() {
 
 function Stat({ label, value, href }: { label: string; value?: number; href: string }) {
   return (
-    <Link href={href} className="rounded-xl bg-white p-4 shadow-sm ring-1 ring-gray-950/5 transition-shadow hover:shadow-md">
-      <p className="text-sm text-gray-600">{label}</p>
-      <div className="mt-1 text-3xl font-semibold tabular text-gray-950">{value ?? <Skeleton className="mt-1 h-8 w-12" />}</div>
+    <Link href={href} className="rounded-xl bg-white p-3 shadow-sm ring-1 ring-gray-950/5 transition-shadow hover:shadow-md sm:p-4">
+      <p className="truncate text-xs text-gray-600 sm:text-sm">{label}</p>
+      <div className="mt-1 text-2xl font-semibold tabular text-gray-950 sm:text-3xl">{value ?? <Skeleton className="mt-1 h-7 w-10 sm:h-8 sm:w-12" />}</div>
     </Link>
   );
 }

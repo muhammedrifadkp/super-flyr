@@ -5,8 +5,10 @@ import {
   ChevronLeft,
   ChevronRight,
   Download,
+  Eye,
   Globe,
   Layout as LayoutIcon,
+  Minimize2,
   Package,
   Paintbrush,
   Redo2,
@@ -104,6 +106,7 @@ function EditorInner({
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [exportRequest, setExportRequest] = useState<ExportRequest | null>(null);
   const [dialog, setDialog] = useState<"export" | "share" | null>(null);
+  const [mobileFullPreview, setMobileFullPreview] = useState(false);
 
   // ----- undo / redo -----
   const past = useRef<Poster[]>([]);
@@ -239,7 +242,7 @@ function EditorInner({
     };
   }, [save]);
 
-  const previewMaxHeight = usePreviewMaxHeight();
+  const previewMaxHeight = usePreviewMaxHeight(mobileFullPreview);
   const items = useMemo(() => resolveItems(poster.items, products), [poster.items, products]);
   const geo = posterGeometry(poster, store, items.length);
   const pages = geo.pages;
@@ -319,9 +322,9 @@ function EditorInner({
   const baseName = slugify(poster.title);
 
   return (
-    <div className="flex min-h-dvh flex-col md:h-dvh md:min-h-0">
+    <div className="flex h-dvh flex-col overflow-hidden">
       {/* Top bar */}
-      <header className="sticky top-0 z-30 flex h-14 shrink-0 items-center gap-1 border-b border-gray-200 bg-white px-2 sm:gap-2 sm:px-3">
+      <header className="z-30 flex h-13 shrink-0 items-center gap-0.5 border-b border-gray-200 bg-white px-1.5 sm:h-14 sm:gap-2 sm:px-3">
         <Link
           href="/dashboard/posters"
           aria-label="Back to posters"
@@ -337,49 +340,82 @@ function EditorInner({
             if (!e.target.value.trim()) update({ title: "Untitled poster" });
           }}
           aria-label="Poster title"
-          className="h-9 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-2 text-base font-semibold text-gray-950 hover:bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-600 sm:text-sm"
+          className="h-9 min-w-0 flex-1 rounded-lg border-0 bg-transparent px-1.5 text-sm font-semibold text-gray-950 hover:bg-gray-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-brand-600"
         />
         <SaveIndicator state={saveState} onRetry={() => void save()} />
-        <div className="hidden items-center sm:flex">
-          <IconButton label="Undo (Ctrl+Z)" onClick={undo} disabled={!history.undo}>
-            <Undo2 className="size-[18px]" />
+        <div className="flex items-center">
+          <IconButton label="Undo (Ctrl+Z)" onClick={undo} disabled={!history.undo} className="size-8 sm:size-9">
+            <Undo2 className="size-4 sm:size-[18px]" />
           </IconButton>
-          <IconButton label="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={!history.redo}>
-            <Redo2 className="size-[18px]" />
+          <IconButton label="Redo (Ctrl+Shift+Z)" onClick={redo} disabled={!history.redo} className="size-8 sm:size-9">
+            <Redo2 className="size-4 sm:size-[18px]" />
           </IconButton>
         </div>
-        <Button size="sm" icon={poster.published ? <Globe className="size-4 text-brand-600" /> : <Share2 className="size-4" />} onClick={() => setDialog("share")}>
+        <IconButton
+          label={mobileFullPreview ? "Show editor controls" : "Full screen preview"}
+          onClick={() => setMobileFullPreview((v) => !v)}
+          className={cx("size-8 md:hidden", mobileFullPreview && "bg-brand-50 text-brand-700")}
+        >
+          {mobileFullPreview ? <Minimize2 className="size-4" /> : <Eye className="size-4" />}
+        </IconButton>
+        <Button size="sm" icon={poster.published ? <Globe className="size-4 text-brand-600" /> : <Share2 className="size-4" />} onClick={() => setDialog("share")} className="px-2.5 sm:px-3">
           <span className="hidden sm:inline">{poster.published ? "Published" : "Share"}</span>
         </Button>
-        <Button size="sm" variant="primary" icon={<Download className="size-4" />} onClick={() => setDialog("export")}>
+        <Button size="sm" variant="primary" icon={<Download className="size-4" />} onClick={() => setDialog("export")} className="px-2.5 sm:px-3">
           <span className="hidden sm:inline">Download</span>
         </Button>
       </header>
 
       <div className="flex min-h-0 flex-1 flex-col-reverse md:flex-row">
         {/* Panel */}
-        <aside className="flex min-h-0 flex-col border-gray-200 bg-white md:w-[380px] md:shrink-0 md:border-r">
-          <div role="tablist" aria-label="Editor sections" className="sticky top-14 z-20 grid grid-cols-4 border-b border-gray-200 bg-white md:static">
-            {TABS.map(({ id: tabId, label, icon: Icon }) => (
-              <button
-                key={tabId}
-                role="tab"
-                type="button"
-                id={`tab-${tabId}`}
-                aria-selected={tab === tabId}
-                aria-controls={`panel-${tabId}`}
-                onClick={() => setTab(tabId)}
-                className={cx(
-                  "flex h-12 flex-col items-center justify-center gap-0.5 border-b-2 text-xs font-medium transition-colors",
-                  tab === tabId ? "border-brand-600 text-brand-700" : "border-transparent text-gray-600 hover:text-gray-950",
-                )}
-              >
-                <Icon className="size-4" aria-hidden="true" />
-                {label}
-              </button>
-            ))}
+        <aside
+          className={cx(
+            "flex min-h-0 flex-col border-t border-gray-200 bg-white md:w-[380px] md:shrink-0 md:border-r md:border-t-0",
+            mobileFullPreview ? "shrink-0" : "flex-1 md:flex-initial",
+          )}
+        >
+          <div role="tablist" aria-label="Editor sections" className="z-20 grid shrink-0 grid-cols-4 border-b border-gray-200 bg-white">
+            {TABS.map(({ id: tabId, label, icon: Icon }) => {
+              const active = !mobileFullPreview && tab === tabId;
+              return (
+                <button
+                  key={tabId}
+                  role="tab"
+                  type="button"
+                  id={`tab-${tabId}`}
+                  aria-selected={active}
+                  aria-controls={`panel-${tabId}`}
+                  onClick={() => {
+                    setTab(tabId);
+                    setMobileFullPreview(false);
+                  }}
+                  className={cx(
+                    "relative flex h-12 flex-col items-center justify-center gap-0.5 border-b-2 text-xs font-medium transition-colors",
+                    active ? "border-brand-600 bg-brand-50/40 text-brand-700" : "border-transparent text-gray-600 hover:text-gray-950",
+                  )}
+                >
+                  <span className="relative inline-flex items-center">
+                    <Icon className="size-4" aria-hidden="true" />
+                    {tabId === "products" && items.length > 0 ? (
+                      <span className="ml-1 rounded-full bg-brand-100 px-1.5 py-0 text-[10px] font-bold tabular text-brand-800">
+                        {items.length}
+                      </span>
+                    ) : null}
+                  </span>
+                  {label}
+                </button>
+              );
+            })}
           </div>
-          <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`} className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-24 md:pb-6">
+          <div
+            id={`panel-${tab}`}
+            role="tabpanel"
+            aria-labelledby={`tab-${tab}`}
+            className={cx(
+              "relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-[max(1.5rem,env(safe-area-inset-bottom))] md:pb-6",
+              mobileFullPreview && "hidden md:block",
+            )}
+          >
             {tab === "products" ? (
               <ProductsPanel poster={poster} items={items} products={products} update={update} selectedId={selectedId} onSelect={selectItem} />
             ) : tab === "layout" ? (
@@ -393,8 +429,14 @@ function EditorInner({
         </aside>
 
         {/* Preview */}
-        <section aria-label="Poster preview" className="flex min-h-0 flex-1 flex-col bg-[#e9ebef]">
-          <div className="flex min-h-0 flex-1 items-start justify-center overflow-auto p-4 md:items-center md:p-8">
+        <section
+          aria-label="Poster preview"
+          className={cx(
+            "flex min-h-0 flex-col bg-[#e9ebef] md:flex-1",
+            mobileFullPreview ? "flex-1" : "shrink-0",
+          )}
+        >
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto px-3 py-2 md:p-8">
             <FittedPoster
               className="w-full max-w-[min(100%,1100px)]"
               maxHeight={previewMaxHeight}
@@ -409,24 +451,39 @@ function EditorInner({
               showEmptyHint
             />
           </div>
-          <div className="flex shrink-0 items-center justify-center gap-3 px-4 pb-3 text-sm text-gray-700">
+          <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1.5 text-xs text-gray-700 md:justify-center md:pb-3 md:text-sm">
             {pages > 1 ? (
-              <>
-                <IconButton label="Previous page" onClick={() => setPage(Math.max(0, currentPage - 1))} disabled={currentPage === 0}>
-                  <ChevronLeft className="size-5" />
+              <div className="flex items-center gap-1.5">
+                <IconButton label="Previous page" onClick={() => setPage(Math.max(0, currentPage - 1))} disabled={currentPage === 0} className="size-7 md:size-9">
+                  <ChevronLeft className="size-4 md:size-5" />
                 </IconButton>
-                <span className="tabular" aria-live="polite">
-                  Page {currentPage + 1} of {pages}
+                <span className="font-medium tabular" aria-live="polite">
+                  Page {currentPage + 1} / {pages}
                 </span>
-                <IconButton label="Next page" onClick={() => setPage(Math.min(pages - 1, currentPage + 1))} disabled={currentPage >= pages - 1}>
-                  <ChevronRight className="size-5" />
+                <IconButton label="Next page" onClick={() => setPage(Math.min(pages - 1, currentPage + 1))} disabled={currentPage >= pages - 1} className="size-7 md:size-9">
+                  <ChevronRight className="size-4 md:size-5" />
                 </IconButton>
-              </>
+              </div>
             ) : (
-              <span className="text-xs text-gray-500 tabular">
-                {format.label} · {format.width}×{format.height} · tap a product to edit it
+              <span className="truncate text-[11px] text-gray-500 tabular md:text-xs">
+                {format.label} · {format.width}×{format.height} · tap or drag items on poster
               </span>
             )}
+            <button
+              type="button"
+              onClick={() => setMobileFullPreview((v) => !v)}
+              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-gray-800 shadow-xs ring-1 ring-gray-300 md:hidden"
+            >
+              {mobileFullPreview ? (
+                <>
+                  <Minimize2 className="size-3" aria-hidden="true" /> Edit Tools
+                </>
+              ) : (
+                <>
+                  <Eye className="size-3" aria-hidden="true" /> Full Preview
+                </>
+              )}
+            </button>
           </div>
         </section>
       </div>
@@ -463,14 +520,22 @@ function EditorInner({
 }
 
 /** Keeps the whole poster visible: viewport height minus the editor chrome. */
-function usePreviewMaxHeight() {
-  const [height, setHeight] = useState(800);
+function usePreviewMaxHeight(mobileFullPreview: boolean) {
+  const [height, setHeight] = useState(420);
   useEffect(() => {
-    const update = () => setHeight(Math.max(320, window.innerHeight - (window.innerWidth >= 768 ? 170 : 220)));
+    const update = () => {
+      if (window.innerWidth >= 768) {
+        setHeight(Math.max(320, window.innerHeight - 160));
+      } else if (mobileFullPreview) {
+        setHeight(Math.max(260, window.innerHeight - 156));
+      } else {
+        setHeight(Math.max(175, Math.min(300, Math.round(window.innerHeight * 0.31))));
+      }
+    };
     update();
     window.addEventListener("resize", update);
     return () => window.removeEventListener("resize", update);
-  }, []);
+  }, [mobileFullPreview]);
   return height;
 }
 

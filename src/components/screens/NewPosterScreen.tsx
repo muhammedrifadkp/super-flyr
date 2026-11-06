@@ -127,35 +127,35 @@ export function NewPosterScreen() {
       </div>
 
       {!store ? (
-        <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-6 grid grid-cols-2 gap-3 sm:gap-5 lg:grid-cols-3">
           {Array.from({ length: 6 }, (_, i) => (
             <Skeleton key={i} className="aspect-[4/5]" />
           ))}
         </div>
       ) : (
-        <ul className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="mt-5 grid grid-cols-2 gap-3 sm:mt-6 sm:gap-5 lg:grid-cols-3">
           {previews.map(({ template, poster, items, count }) => (
-            <li key={template.id}>
+            <li key={template.id} className="flex">
               <button
                 type="button"
                 onClick={() => create(template.id)}
                 disabled={creating !== null}
-                className="group block w-full rounded-2xl bg-white p-3 text-left shadow-sm ring-1 ring-gray-950/5 transition-shadow hover:shadow-md hover:ring-brand-300 disabled:opacity-70"
+                className="group flex w-full flex-col rounded-2xl bg-white p-2 text-left shadow-sm ring-1 ring-gray-950/5 transition-shadow hover:shadow-md hover:ring-brand-300 active:scale-[0.99] disabled:opacity-70 sm:p-3"
               >
-                <div className="relative overflow-hidden rounded-xl bg-gray-100 p-3">
-                  <FittedPoster poster={poster} store={store} items={items} page={0} maxHeight={340} />
+                <div className="relative overflow-hidden rounded-xl bg-gray-100 p-1.5 sm:p-3">
+                  <FittedPoster poster={poster} store={store} items={items} page={0} maxHeight={260} />
                   {creating === template.id ? (
-                    <span className="absolute inset-0 flex items-center justify-center gap-2 bg-white/70 text-sm font-medium">
+                    <span className="absolute inset-0 flex items-center justify-center gap-2 bg-white/75 text-xs font-medium sm:text-sm">
                       <Spinner /> Creating…
                     </span>
                   ) : null}
                 </div>
-                <div className="px-1 pb-1 pt-3">
-                  <p className="font-semibold text-gray-950">{template.name}</p>
-                  <p className="text-sm text-gray-600">{template.description}</p>
+                <div className="px-1 pb-1 pt-2 sm:pt-3">
+                  <p className="truncate text-sm font-semibold text-gray-950 sm:text-base">{template.name}</p>
+                  <p className="line-clamp-2 text-xs text-gray-600 sm:text-sm">{template.description}</p>
                   {template.autoCategory ? (
-                    <p className="mt-1 text-xs font-medium text-brand-700">
-                      {count > 0 ? `Adds your ${count} ${template.autoCategory.toLowerCase()}` : `No ${template.autoCategory.toLowerCase()} in your library yet`}
+                    <p className="mt-1 truncate text-[11px] font-medium text-brand-700 sm:text-xs">
+                      {count > 0 ? `Adds your ${count} ${template.autoCategory.toLowerCase()}` : `No ${template.autoCategory.toLowerCase()} in library yet`}
                     </p>
                   ) : null}
                 </div>
