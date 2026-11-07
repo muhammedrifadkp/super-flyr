@@ -420,10 +420,10 @@ function Editable({ ctx, k, children }: { ctx: Ctx; k: string; children: ReactNo
         if (container) container.style.cursor = "default";
       }}
       onDragEnd={(e) => {
-        if (e.target === ref.current) persist(e.target);
+        if (e.target === e.currentTarget && ref.current) persist(ref.current);
       }}
       onTransformEnd={(e) => {
-        if (e.target === ref.current) persist(e.target);
+        if (e.target === e.currentTarget && ref.current) persist(ref.current);
       }}
     >
       {hit ? <Rect name="edit-hit" x={hit.x} y={hit.y} width={hit.w} height={hit.h} fill="#000" opacity={0.001} /> : null}
