@@ -26,7 +26,7 @@ export interface PosterCanvasProps {
   /** On-screen width in CSS pixels. Use the format width (scale 1) for export. */
   displayWidth: number;
   selectedId?: string | null;
-  onSelectItem?: (id: string) => void;
+  onSelectItem?: (id: string | null) => void;
   onMoveBrand?: (offsetX: number, offsetY: number) => void;
   onMoveItem?: (id: string, offsetX: number, offsetY: number) => void;
   /** Mouse resize of a product card (drag the card's handles). */
@@ -194,8 +194,37 @@ export default function PosterCanvas({
 
   // Keep the canvas selection in sync when a product is picked from the side panel.
   useEffect(() => {
-    if (selectedId) setActiveNode(`item-${selectedId}`);
+    setActiveNode((prev) => {
+      if (selectedId) return `item-${selectedId}`;
+      return prev?.startsWith("item-") ? null : prev;
+    });
   }, [selectedId]);
+
+  // Clicking anywhere outside the canvas (or pressing Escape) unselects active canvas elements.
+  useEffect(() => {
+    if (!editing) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const stageContainer = trRef.current?.getStage()?.container();
+      const target = e.target as HTMLElement | null;
+      if (stageContainer && target && stageContainer.contains(target)) return;
+      setActiveNode(null);
+      if (!target?.closest?.("[data-poster-item-id]")) {
+        onSelectItem?.(null);
+      }
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setActiveNode(null);
+        onSelectItem?.(null);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [editing, onSelectItem]);
 
   const ctx: Ctx = {
     geo,
@@ -252,13 +281,19 @@ export default function PosterCanvas({
         const target = e.target;
         const isHandle = target.getParent()?.className === "Transformer";
         if (isHandle) return;
-        if (!target.findAncestor(".editable", true)) setActiveNode(null);
+        if (!target.findAncestor(".editable", true)) {
+          setActiveNode(null);
+          onSelectItem?.(null);
+        }
       }}
       onTouchStart={(e) => {
         if (!editing) return;
         const target = e.target;
         if (target.getParent()?.className === "Transformer") return;
-        if (!target.findAncestor(".editable", true)) setActiveNode(null);
+        if (!target.findAncestor(".editable", true)) {
+          setActiveNode(null);
+          onSelectItem?.(null);
+        }
       }}
     >
       <Layer key={layerKey}>
@@ -285,7 +320,7 @@ export default function PosterCanvas({
               basePos={{ x: baseX, y: baseY }}
               item={item}
               imageScale={layout.imageScale * (item.imageScale ?? 1)}
-              selected={selectedId === item.id}
+              selected={activeNode === `item-${item.id}`}
               onSelect={
                 onSelectItem || editing
                   ? () => {
