@@ -12,6 +12,7 @@ import {
   Package,
   Paintbrush,
   Redo2,
+  RotateCcw,
   Share2,
   Type,
   Undo2,
@@ -23,10 +24,11 @@ import { api, usePoster, useProducts, useStore } from "@/lib/client/api";
 import { resolveItems, slugify } from "@/lib/format";
 import { posterGeometry } from "@/lib/poster/layout";
 import { FORMATS, normalizePoster } from "@/lib/poster/templates";
-import type { Poster, PosterPatch, Product, Store } from "@/lib/types";
+import type { ElementTransform, Poster, PosterPatch, Product, Store } from "@/lib/types";
 import { ExportHost, type ExportRequest } from "../poster/ExportHost";
 import { ExportDialog, ShareDialog } from "../poster/EditorDialogs";
 import { LayoutPanel, ProductsPanel, StylePanel, TextPanel } from "../poster/EditorPanels";
+import type { ItemTransformPatch } from "../poster/PosterCanvas";
 import { FittedPoster } from "../poster/PosterPreview";
 import { useToast } from "../Toast";
 import { Button, EmptyState, IconButton, Skeleton, Spinner, cx } from "../ui";
@@ -287,8 +289,8 @@ function EditorInner({
           it.id === itemId
             ? {
                 ...it,
-                offsetX: Math.max(-600, Math.min(600, offsetX)),
-                offsetY: Math.max(-600, Math.min(600, offsetY)),
+                offsetX: Math.max(-800, Math.min(800, offsetX)),
+                offsetY: Math.max(-800, Math.min(800, offsetY)),
               }
             : it,
         ),
@@ -296,6 +298,65 @@ function EditorInner({
     },
     [update],
   );
+
+  const handleTransformItem = useCallback(
+    (itemId: string, patch: ItemTransformPatch) => {
+      if (!latest.current) return;
+      setSelectedId(itemId);
+      update({
+        items: latest.current.items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)),
+      });
+    },
+    [update],
+  );
+
+  const handleTransformElement = useCallback(
+    (key: string, transform: ElementTransform) => {
+      if (!latest.current) return;
+      const current = latest.current.content;
+      update({
+        content: {
+          ...current,
+          elementTransforms: {
+            ...(current.elementTransforms ?? {}),
+            [key]: transform,
+          },
+        },
+      });
+    },
+    [update],
+  );
+
+  const hasCanvasTransforms =
+    Object.keys(poster.content.elementTransforms ?? {}).length > 0 ||
+    Boolean(poster.content.brandOffsetX) ||
+    Boolean(poster.content.brandOffsetY) ||
+    poster.items.some(
+      (it) =>
+        Boolean(it.offsetX) ||
+        Boolean(it.offsetY) ||
+        (it.widthScale !== undefined && it.widthScale !== 1) ||
+        (it.heightScale !== undefined && it.heightScale !== 1),
+    );
+
+  const resetCanvasTransforms = useCallback(() => {
+    if (!latest.current) return;
+    update({
+      content: {
+        ...latest.current.content,
+        brandOffsetX: 0,
+        brandOffsetY: 0,
+        elementTransforms: {},
+      },
+      items: latest.current.items.map((it) => ({
+        ...it,
+        widthScale: undefined,
+        heightScale: undefined,
+        offsetX: undefined,
+        offsetY: undefined,
+      })),
+    });
+  }, [update]);
 
   /** Renders all pages at full size. Returns data URLs. */
   const renderPages = useCallback(
@@ -448,10 +509,12 @@ function EditorInner({
               onSelectItem={selectItem}
               onMoveBrand={handleMoveBrand}
               onMoveItem={handleMoveItem}
+              onTransformItem={handleTransformItem}
+              onTransformElement={handleTransformElement}
               showEmptyHint
             />
           </div>
-          <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1.5 text-xs text-gray-700 md:justify-center md:pb-3 md:text-sm">
+          <div className="flex shrink-0 items-center justify-between gap-2 px-3 pb-1.5 text-xs text-gray-700 md:justify-center md:gap-4 md:pb-3 md:text-sm">
             {pages > 1 ? (
               <div className="flex items-center gap-1.5">
                 <IconButton label="Previous page" onClick={() => setPage(Math.max(0, currentPage - 1))} disabled={currentPage === 0} className="size-7 md:size-9">
@@ -466,24 +529,36 @@ function EditorInner({
               </div>
             ) : (
               <span className="truncate text-[11px] text-gray-500 tabular md:text-xs">
-                {format.label} · {format.width}×{format.height} · tap or drag items on poster
+                {format.label} · {format.width}×{format.height} · click any element on poster to drag or resize
               </span>
             )}
-            <button
-              type="button"
-              onClick={() => setMobileFullPreview((v) => !v)}
-              className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-gray-800 shadow-xs ring-1 ring-gray-300 md:hidden"
-            >
-              {mobileFullPreview ? (
-                <>
-                  <Minimize2 className="size-3" aria-hidden="true" /> Edit Tools
-                </>
-              ) : (
-                <>
-                  <Eye className="size-3" aria-hidden="true" /> Full Preview
-                </>
-              )}
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              {hasCanvasTransforms ? (
+                <button
+                  type="button"
+                  onClick={resetCanvasTransforms}
+                  className="inline-flex items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-brand-700 shadow-xs ring-1 ring-brand-200 hover:bg-brand-50"
+                >
+                  <RotateCcw className="size-3" aria-hidden="true" />
+                  Reset Canvas
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => setMobileFullPreview((v) => !v)}
+                className="inline-flex shrink-0 items-center gap-1 rounded-full bg-white/90 px-2.5 py-1 text-[11px] font-semibold text-gray-800 shadow-xs ring-1 ring-gray-300 md:hidden"
+              >
+                {mobileFullPreview ? (
+                  <>
+                    <Minimize2 className="size-3" aria-hidden="true" /> Edit Tools
+                  </>
+                ) : (
+                  <>
+                    <Eye className="size-3" aria-hidden="true" /> Full Preview
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </section>
       </div>

@@ -1,15 +1,22 @@
 "use client";
 
 import type Konva from "konva";
-import { useEffect, useMemo, useState, type ReactNode, type Ref } from "react";
-import { Circle, Ellipse, Group, Image as KonvaImage, Layer, Line, Path, Rect, Shape, Stage, Star, Text } from "react-konva";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
+import { Circle, Ellipse, Group, Image as KonvaImage, Layer, Line, Path, Rect, Shape, Stage, Star, Text, Transformer } from "react-konva";
 import { getLoadedImage, useImages } from "@/lib/client/imageCache";
 import { discountPercent, formatPrice, formatValidity } from "@/lib/format";
 import { fontFamily, fontWeight, loadPosterFonts, stack } from "@/lib/poster/fonts";
 import { cellsFor, contactText, pageItems, posterGeometry, seededRandom, type Box, type PosterGeometry } from "@/lib/poster/layout";
 import { encodeQrMatrix } from "@/lib/poster/qr";
 import { isTransparent, mix, normalizeContent, normalizeLayout, normalizeStyle, readableOn, resolveHeroImageUrl } from "@/lib/poster/templates";
-import type { FontKey, Poster, PosterContent, PosterStyle, ResolvedItem, Store } from "@/lib/types";
+import type { ElementTransform, FontKey, Poster, PosterContent, PosterStyle, ResolvedItem, Store } from "@/lib/types";
+
+export interface ItemTransformPatch {
+  widthScale: number;
+  heightScale: number;
+  offsetX: number;
+  offsetY: number;
+}
 
 export interface PosterCanvasProps {
   poster: Pick<Poster, "id" | "layout" | "style" | "content"> & { templateId?: string; slug?: string };
@@ -22,6 +29,10 @@ export interface PosterCanvasProps {
   onSelectItem?: (id: string) => void;
   onMoveBrand?: (offsetX: number, offsetY: number) => void;
   onMoveItem?: (id: string, offsetX: number, offsetY: number) => void;
+  /** Mouse resize of a product card (drag the card's handles). */
+  onTransformItem?: (id: string, patch: ItemTransformPatch) => void;
+  /** Mouse move / resize of a free poster element (title, hero, sticker, brand…). */
+  onTransformElement?: (key: string, transform: ElementTransform) => void;
   stageRef?: Ref<Konva.Stage>;
   showEmptyHint?: boolean;
   /** Called after fonts and images are loaded and drawn. */
@@ -90,7 +101,17 @@ interface Ctx {
   seed: string;
   qrUrl: string;
   onMoveBrand?: (offsetX: number, offsetY: number) => void;
+  /** Present only in the editor: free move / resize of canvas elements. */
+  edit?: EditApi;
 }
+
+interface EditApi {
+  select: (nodeId: string) => void;
+  commit: (key: string, transform: ElementTransform) => void;
+}
+
+const clampNum = (v: number, min: number, max: number) => Math.max(min, Math.min(max, v));
+const round = (v: number, step: number) => Math.round(v / step) * step;
 
 // ---------- main component ----------
 
@@ -104,6 +125,8 @@ export default function PosterCanvas({
   onSelectItem,
   onMoveBrand,
   onMoveItem,
+  onTransformItem,
+  onTransformElement,
   stageRef,
   showEmptyHint,
   onReady,
@@ -165,6 +188,15 @@ export default function PosterCanvas({
     : store.whatsapp.replace(/\D/g, "")
       ? `https://wa.me/${store.whatsapp.replace(/\D/g, "")}`
       : origin;
+  const editing = Boolean(onTransformElement);
+  const [activeNode, setActiveNode] = useState<string | null>(null);
+  const trRef = useRef<Konva.Transformer>(null);
+
+  // Keep the canvas selection in sync when a product is picked from the side panel.
+  useEffect(() => {
+    if (selectedId) setActiveNode(`item-${selectedId}`);
+  }, [selectedId]);
+
   const ctx: Ctx = {
     geo,
     style,
@@ -175,10 +207,37 @@ export default function PosterCanvas({
     seed: poster.id,
     qrUrl,
     onMoveBrand,
+    edit: editing
+      ? {
+          select: setActiveNode,
+          commit: (key, t) =>
+            onTransformElement?.(key, {
+              x: round(clampNum(t.x, -3000, 3000), 0.5),
+              y: round(clampNum(t.y, -3000, 3000), 0.5),
+              scale: round(clampNum(t.scale, 0.15, 6), 0.005),
+            }),
+        }
+      : undefined,
   };
   // Fonts change text metrics, so remount the layer once they are loaded.
   const layerKey = `${fontsKey}:${fontsReady ? 1 : 0}`;
-  const interactive = Boolean(onSelectItem || onMoveBrand || onMoveItem);
+  const interactive = Boolean(onSelectItem || onMoveBrand || onMoveItem || editing);
+  const activeIsItem = Boolean(activeNode?.startsWith("item-"));
+
+  // Attach the resize handles to the selected element (runs after every draw so remounts are picked up).
+  useEffect(() => {
+    const tr = trRef.current;
+    if (!tr) return;
+    const stage = tr.getStage();
+    const node = activeNode && stage ? stage.findOne(`#${activeNode}`) : null;
+    const current = tr.nodes();
+    if (node) {
+      if (current.length !== 1 || current[0] !== node) tr.nodes([node]);
+    } else if (current.length) {
+      tr.nodes([]);
+    }
+    tr.getLayer()?.batchDraw();
+  });
 
   return (
     <Stage
@@ -188,6 +247,19 @@ export default function PosterCanvas({
       scaleX={scale}
       scaleY={scale}
       listening={interactive}
+      onMouseDown={(e) => {
+        if (!editing) return;
+        const target = e.target;
+        const isHandle = target.getParent()?.className === "Transformer";
+        if (isHandle) return;
+        if (!target.findAncestor(".editable", true)) setActiveNode(null);
+      }}
+      onTouchStart={(e) => {
+        if (!editing) return;
+        const target = e.target;
+        if (target.getParent()?.className === "Transformer") return;
+        if (!target.findAncestor(".editable", true)) setActiveNode(null);
+      }}
     >
       <Layer key={layerKey}>
         <Background ctx={ctx} />
@@ -214,16 +286,149 @@ export default function PosterCanvas({
               item={item}
               imageScale={layout.imageScale * (item.imageScale ?? 1)}
               selected={selectedId === item.id}
-              onSelect={onSelectItem ? () => onSelectItem(item.id) : undefined}
+              onSelect={
+                onSelectItem || editing
+                  ? () => {
+                      setActiveNode(`item-${item.id}`);
+                      onSelectItem?.(item.id);
+                    }
+                  : undefined
+              }
               onMove={onMoveItem ? (ox, oy) => onMoveItem(item.id, ox, oy) : undefined}
+              onResize={
+                onTransformItem
+                  ? (sx, sy, nx, ny) => {
+                      const nwScale = clampNum(wScale * sx, 0.4, 2.2);
+                      const nhScale = clampNum(hScale * sy, 0.4, 2.2);
+                      const nw = slot.w * nwScale;
+                      const nh = slot.h * nhScale;
+                      const nBaseX = slot.x + (slot.w - nw) / 2;
+                      const nBaseY = slot.y + (slot.h - nh) / 2;
+                      onTransformItem(item.id, {
+                        widthScale: round(nwScale, 0.01),
+                        heightScale: round(nhScale, 0.01),
+                        offsetX: Math.round(clampNum((nx - nBaseX) / geo.u, -800, 800)),
+                        offsetY: Math.round(clampNum((ny - nBaseY) / geo.u, -800, 800)),
+                      });
+                    }
+                  : undefined
+              }
             />
           );
         })}
         {visible.length === 0 && showEmptyHint ? <EmptyHint ctx={ctx} /> : null}
         {geo.footer ? <Footer ctx={ctx} box={geo.footer} /> : null}
         <Decorations ctx={ctx} layer="front" />
+        {editing ? (
+          <Transformer
+            ref={trRef}
+            rotateEnabled={false}
+            keepRatio={!activeIsItem}
+            enabledAnchors={
+              activeIsItem
+                ? ["top-left", "top-center", "top-right", "middle-left", "middle-right", "bottom-left", "bottom-center", "bottom-right"]
+                : ["top-left", "top-right", "bottom-left", "bottom-right"]
+            }
+            flipEnabled={false}
+            ignoreStroke
+            anchorSize={11}
+            anchorCornerRadius={3}
+            anchorStroke="#059669"
+            anchorFill="#ffffff"
+            anchorStrokeWidth={1.5}
+            borderStroke="#059669"
+            borderStrokeWidth={1.5}
+            borderDash={[5, 3]}
+            padding={2}
+            boundBoxFunc={(oldBox, newBox) => (Math.abs(newBox.width) < 18 || Math.abs(newBox.height) < 18 ? oldBox : newBox)}
+          />
+        ) : null}
       </Layer>
     </Stage>
+  );
+}
+
+// ---------- editable wrapper ----------
+
+/**
+ * Wraps a poster element so that, in the editor, it can be clicked, dragged and resized with the mouse.
+ * The stored transform is a plain translate + uniform scale around the poster origin.
+ */
+function Editable({ ctx, k, children }: { ctx: Ctx; k: string; children: ReactNode }) {
+  const { u } = ctx.geo;
+  const t = ctx.content.elementTransforms?.[k];
+  const x = (t?.x ?? 0) * u;
+  const y = (t?.y ?? 0) * u;
+  const s = t?.scale ?? 1;
+  const edit = ctx.edit;
+  const ref = useRef<Konva.Group>(null);
+  const [hit, setHit] = useState<Box | null>(null);
+
+  // Measure the children so the whole element (even text gaps) is clickable.
+  useEffect(() => {
+    const group = ref.current;
+    if (!edit || !group) return;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const child of group.getChildren()) {
+      if (child.name() === "edit-hit" || !child.isVisible()) continue;
+      const r = child.getClientRect({ relativeTo: group, skipShadow: true });
+      if (!Number.isFinite(r.x) || r.width <= 0 || r.height <= 0) continue;
+      minX = Math.min(minX, r.x);
+      minY = Math.min(minY, r.y);
+      maxX = Math.max(maxX, r.x + r.width);
+      maxY = Math.max(maxY, r.y + r.height);
+    }
+    const next = Number.isFinite(minX) ? { x: minX, y: minY, w: maxX - minX, h: maxY - minY } : null;
+    const same =
+      (next === null && hit === null) ||
+      (next && hit && Math.abs(next.x - hit.x) < 1 && Math.abs(next.y - hit.y) < 1 && Math.abs(next.w - hit.w) < 1 && Math.abs(next.h - hit.h) < 1);
+    if (!same) setHit(next);
+  });
+
+  if (!edit) {
+    if (!t) return <>{children}</>;
+    return (
+      <Group x={x} y={y} scaleX={s} scaleY={s} listening={false}>
+        {children}
+      </Group>
+    );
+  }
+
+  const persist = (node: Konva.Node) => edit.commit(k, { x: node.x() / u, y: node.y() / u, scale: node.scaleX() });
+
+  return (
+    <Group
+      ref={ref}
+      id={`el-${k}`}
+      name="editable"
+      x={x}
+      y={y}
+      scaleX={s}
+      scaleY={s}
+      draggable
+      onMouseDown={() => edit.select(`el-${k}`)}
+      onTouchStart={() => edit.select(`el-${k}`)}
+      onMouseEnter={(e) => {
+        const container = e.target.getStage()?.container();
+        if (container) container.style.cursor = "move";
+      }}
+      onMouseLeave={(e) => {
+        const container = e.target.getStage()?.container();
+        if (container) container.style.cursor = "default";
+      }}
+      onDragEnd={(e) => {
+        if (e.target === ref.current) persist(e.target);
+      }}
+      onTransformEnd={(e) => {
+        if (e.target === ref.current) persist(e.target);
+      }}
+    >
+      {hit ? <Rect name="edit-hit" x={hit.x} y={hit.y} width={hit.w} height={hit.h} fill="#000" opacity={0.001} /> : null}
+      {children}
+    </Group>
   );
 }
 
@@ -415,7 +620,7 @@ function BrandGroup({
   hitH?: number;
   children: ReactNode;
 }) {
-  const { content, geo, onMoveBrand } = ctx;
+  const { content, geo, onMoveBrand, edit } = ctx;
   const align = content.brandAlign ?? "auto";
   const alignShiftX =
     align === "left"
@@ -427,13 +632,24 @@ function BrandGroup({
           : 0;
   const dx = alignShiftX + (content.brandOffsetX ?? 0) * geo.u;
   const dy = (content.brandOffsetY ?? 0) * geo.u;
+  const bs = content.elementTransforms?.brand?.scale ?? 1;
+  const canMove = Boolean(onMoveBrand);
 
   return (
     <Group
-      x={dx}
-      y={dy}
-      listening={Boolean(onMoveBrand)}
-      draggable={Boolean(onMoveBrand)}
+      id={canMove ? "el-brand" : undefined}
+      name={canMove && edit ? "editable" : undefined}
+      // Scale around the top-left corner of the brand block.
+      x={dx + anchorX}
+      y={dy + hitY}
+      offsetX={anchorX}
+      offsetY={hitY}
+      scaleX={bs}
+      scaleY={bs}
+      listening={canMove}
+      draggable={canMove}
+      onMouseDown={() => edit?.select("el-brand")}
+      onTouchStart={() => edit?.select("el-brand")}
       onMouseEnter={(e) => {
         const container = e.target.getStage()?.container();
         if (container) container.style.cursor = "move";
@@ -443,9 +659,17 @@ function BrandGroup({
         if (container) container.style.cursor = "default";
       }}
       onDragEnd={(e) => {
-        const movedX = (e.target.x() - alignShiftX) / geo.u;
-        const movedY = e.target.y() / geo.u;
-        e.target.position({ x: dx, y: dy });
+        const movedX = (e.target.x() - anchorX - alignShiftX) / geo.u;
+        const movedY = (e.target.y() - hitY) / geo.u;
+        e.target.position({ x: dx + anchorX, y: dy + hitY });
+        onMoveBrand?.(Math.round(movedX), Math.round(movedY));
+      }}
+      onTransformEnd={(e) => {
+        const node = e.target;
+        const nextScale = node.scaleX();
+        const movedX = (node.x() - anchorX - alignShiftX) / geo.u;
+        const movedY = (node.y() - hitY) / geo.u;
+        edit?.commit("brand", { x: 0, y: 0, scale: nextScale });
         onMoveBrand?.(Math.round(movedX), Math.round(movedY));
       }}
     >
@@ -564,6 +788,7 @@ function Hero({ ctx, x, y, w, h, splashColor }: { ctx: Ctx; x: number; y: number
   const glowR = Math.min(iw, ih) * 0.48;
   const glowTint = splashColor ?? style.panelBg;
   return (
+    <Editable ctx={ctx} k="hero">
     <Group listening={false}>
       <Circle
         x={cx}
@@ -599,6 +824,7 @@ function Hero({ ctx, x, y, w, h, splashColor }: { ctx: Ctx; x: number; y: number
         shadowOffsetY={4 * geo.u}
       />
     </Group>
+    </Editable>
   );
 }
 
@@ -612,6 +838,7 @@ function Sticker({ ctx, cx, cy, size }: { ctx: Ctx; cx: number; cy: number; size
   if (!text) return null;
   const w = measure(text, size, fonts.heading, fonts.headingWeight) + size * 1.2;
   return (
+    <Editable ctx={ctx} k="sticker">
     <Group x={cx} y={cy} rotation={-5} listening={false}>
       <Rect
         x={-w / 2}
@@ -640,6 +867,7 @@ function Sticker({ ctx, cx, cy, size }: { ctx: Ctx; cx: number; cy: number; size
         wrap="none"
       />
     </Group>
+    </Editable>
   );
 }
 
@@ -841,7 +1069,7 @@ function ClassicHeader({ ctx }: { ctx: Ctx }) {
   const secondColor = ribbon ? style.panelBg : banner ? style.headerText : style.headerBg;
 
   return (
-    <Group listening={Boolean(ctx.onMoveBrand)}>
+    <Group listening={Boolean(ctx.onMoveBrand || ctx.edit)}>
       {banner ? (
         <>
           <Shape
@@ -906,6 +1134,7 @@ function ClassicHeader({ ctx }: { ctx: Ctx }) {
       </BrandGroup>
       <Sticker ctx={ctx} cx={W - pad - badgeW / 2} cy={topY + topH / 2} size={badgeSize} />
 
+      <Editable ctx={ctx} k="title">
       {ribbon && titleW ? (
         <Line
           closed
@@ -960,6 +1189,7 @@ function ClassicHeader({ ctx }: { ctx: Ctx }) {
           ellipsis
         />
       ) : null}
+      </Editable>
     </Group>
   );
 }
@@ -1018,7 +1248,7 @@ function SplitHeader({ ctx }: { ctx: Ctx }) {
   const dateSize = fit(validity, fonts.heading, fonts.headingWeight, dateW, boxH * 0.3, 12 * u);
 
   return (
-    <Group listening={Boolean(ctx.onMoveBrand)}>
+    <Group listening={Boolean(ctx.onMoveBrand || ctx.edit)}>
       <Line listening={false} closed points={blockPoints} fill={style.headerBg} />
       {style.bgPattern === "diagonal" ? (
         <Group
@@ -1041,11 +1271,13 @@ function SplitHeader({ ctx }: { ctx: Ctx }) {
       <Line listening={false} closed points={[0, hh - cut - 18 * u, 0, hh - cut + 10 * u, cut + 28 * u, hh + 10 * u, cut + 46 * u, hh + 10 * u]} fill={style.panelBg} />
       <Line listening={false} closed points={[W, hh - 40 * u, W, hh + 10 * u, W - 60 * u, hh + 10 * u]} fill={style.panelBg} />
 
+      <Editable ctx={ctx} k="title">
       <TitleText text={content.kicker} x={pad} y={yKicker} width={leftW} align="left" size={kickerSize} family={fonts.body} weight={fonts.bodySemi} fill={style.headerText} />
       <TitleText text={content.headline} x={pad} y={yH1} width={leftW} align="left" size={h1} family={fonts.heading} weight={fonts.headingWeight} fill={style.headlineColor} depth={style.headline3d} />
       <TitleText text={content.headline2} x={pad} y={yH2} width={leftW} align="left" size={h2} family={fonts.heading} weight={fonts.headingWeight} fill={style.headerText} depth={style.headline3d} />
       <TitleText text={content.headlineMl} x={pad} y={yMl} width={leftW} align="left" size={mlSize} family={fonts.ml} weight={fonts.mlBold} fill={style.headerText} />
       <TitleText text={content.subheadline} x={pad} y={ySub} width={leftW} align="left" size={subSize} family={fonts.body} weight={fonts.bodySemi} fill={style.headerText} />
+      </Editable>
 
       {hasHero(content) ? (
         <Hero
@@ -1074,6 +1306,7 @@ function SplitHeader({ ctx }: { ctx: Ctx }) {
       </BrandGroup>
 
       {hasOffer ? (
+        <Editable ctx={ctx} k="offer">
         <Group x={boxX} y={boxY}>
           <Rect width={boxW} height={boxH} fill={style.panelBg} stroke={mix(style.panelBg, "#ffffff", 0.45)} strokeWidth={2.5 * u} cornerRadius={6 * u} shadowColor="#000" shadowBlur={14 * u} shadowOpacity={0.28} shadowOffsetY={5 * u} />
           <Text y={boxH * 0.1} width={boxW} align="center" text={content.offerLabel} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={labelSize} fill={style.panelText} wrap="none" />
@@ -1089,9 +1322,10 @@ function SplitHeader({ ctx }: { ctx: Ctx }) {
             wrap="none"
           />
         </Group>
+        </Editable>
       ) : null}
       {validity ? (
-        <>
+        <Editable ctx={ctx} k="date">
           <Tag ctx={ctx} text="VALID ON" cx={dateX} y={boxY} size={boxH * 0.13} bg={style.panelBg} color={style.panelText} maxWidth={dateW} align="left" />
           <Text
             x={dateX}
@@ -1106,7 +1340,7 @@ function SplitHeader({ ctx }: { ctx: Ctx }) {
             wrap="word"
             listening={false}
           />
-        </>
+        </Editable>
       ) : null}
     </Group>
   );
@@ -1133,7 +1367,7 @@ function ArcHeader({ ctx }: { ctx: Ctx }) {
   const yDate = yMl + (content.headlineMl ? mlSize * 1.35 : 0);
 
   return (
-    <Group listening={Boolean(ctx.onMoveBrand)}>
+    <Group listening={Boolean(ctx.onMoveBrand || ctx.edit)}>
       <Ellipse listening={false} x={W / 2} y={cy} radiusX={rx} radiusY={ry} fill={style.headerBg} shadowColor="#000" shadowBlur={20 * u} shadowOpacity={0.15} shadowOffsetY={6 * u} />
       <BrandGroup ctx={ctx} anchorX={W / 2 - inner * 0.35} width={inner * 0.7} hitY={yLogo} hitH={logoH}>
         <LogoBox ctx={ctx} x={W / 2 - inner * 0.35} y={yLogo} w={inner * 0.7} h={logoH} bg="#00000000" color={style.headerText} radius={0} />
@@ -1147,6 +1381,7 @@ function ArcHeader({ ctx }: { ctx: Ctx }) {
         lineCap="round"
         opacity={0.9}
       />
+      <Editable ctx={ctx} k="title">
       <InlineTitle
         parts={[
           { text: content.headline, color: style.headerText },
@@ -1163,6 +1398,7 @@ function ArcHeader({ ctx }: { ctx: Ctx }) {
       />
       <TitleText text={content.headlineMl} x={x0} y={yMl} width={inner} size={mlSize} family={fonts.ml} weight={fonts.mlBold} fill={style.headerText} />
       <TitleText text={validity} x={x0} y={yDate} width={inner} size={dateSize} family={fonts.body} weight={`italic ${fonts.bodyBold}`} fill={style.headerText} />
+      </Editable>
       <Sticker ctx={ctx} cx={W / 2 + rx * 0.82} cy={hh * 0.2} size={hh * 0.08} />
     </Group>
   );
@@ -1193,20 +1429,24 @@ function BlobHeader({ ctx }: { ctx: Ctx }) {
   const yDate = ySub + (content.subheadline ? subSize * 1.6 : 0);
 
   return (
-    <Group listening={Boolean(ctx.onMoveBrand)}>
+    <Group listening={Boolean(ctx.onMoveBrand || ctx.edit)}>
       <Path listening={false} data={blob} fill={style.headerBg} />
       <Circle listening={false} x={cx} y={cy} radius={r} fill={mix(style.headerBg, "#ffffff", 0.08)} stroke={mix(style.headlineColor, style.headerBg, 0.35)} strokeWidth={10 * u} shadowColor="#000" shadowBlur={18 * u} shadowOpacity={0.2} />
       <Circle listening={false} x={cx} y={cy} radius={r * 0.88} stroke={style.headlineColor} strokeWidth={4 * u} opacity={0.85} />
+      <Editable ctx={ctx} k="title">
       <Group x={cx} y={cy} rotation={-7} listening={false}>
         <TitleText text={content.headline} x={-titleW / 2} y={-blockH / 2} width={titleW} size={h1} family={fonts.heading} weight={fonts.headingWeight} fill={style.headerText} depth={style.headline3d} depthColor={mix(style.headerBg, "#000000", 0.45)} />
         <TitleText text={content.headline2} x={-titleW / 2} y={-blockH / 2 + (content.headline ? h1 : 0)} width={titleW} size={h2} family={fonts.heading} weight={fonts.headingWeight} fill={style.headlineColor} depth={style.headline3d} depthColor={mix(style.headerBg, "#000000", 0.45)} />
         <TitleText text={content.headlineMl} x={-r * 0.65} y={blockH / 2 - mlSize * 1.2} width={r * 1.3} size={mlSize} family={fonts.ml} weight={fonts.mlBold} fill={style.headerText} />
       </Group>
+      </Editable>
       <BrandGroup ctx={ctx} anchorX={rightX + rightW * 0.1} width={rightW * 0.8} hitY={yLogo} hitH={logoH}>
         <LogoBox ctx={ctx} x={rightX + rightW * 0.1} y={yLogo} w={rightW * 0.8} h={logoH} bg={style.panelBg} color={style.panelText} radius={14 * u} />
       </BrandGroup>
+      <Editable ctx={ctx} k="info">
       <TitleText text={content.subheadline} x={rightX} y={ySub} width={rightW} size={subSize} family={fonts.body} weight={fonts.bodyBold} fill={style.headerText} />
       {validity ? <Tag ctx={ctx} text={validity} cx={rightX + rightW / 2} y={yDate} size={hh * 0.075} bg={style.stripBg} color={style.stripText} maxWidth={rightW} /> : null}
+      </Editable>
       <Sticker ctx={ctx} cx={W - pad - 60 * u} cy={hh * 0.06 + 20 * u} size={hh * 0.06} />
     </Group>
   );
@@ -1279,7 +1519,7 @@ function CircleHeader({ ctx }: { ctx: Ctx }) {
   const triColor = mix(style.panelBg, "#d97706", 0.22);
 
   return (
-    <Group listening={Boolean(ctx.onMoveBrand)}>
+    <Group listening={Boolean(ctx.onMoveBrand || ctx.edit)}>
       {panel ? (
         <Rect
           listening={false}
@@ -1302,10 +1542,13 @@ function CircleHeader({ ctx }: { ctx: Ctx }) {
           <TitleText text={store.name} x={rightX + nameDx - infoW * 0.2} y={yName + nameDy} width={infoW * 1.4} size={nameSize} family={fonts.body} weight={fonts.bodyBold} fill={style.headerText} />
         ) : null}
       </BrandGroup>
+      <Editable ctx={ctx} k="info">
       <TitleText text={content.subheadline} x={rightX} y={ySub} width={infoW} size={subSize} family={content.subheadline.match(/[ഀ-ൿ]/) ? fonts.ml : fonts.body} weight={fonts.bodySemi} fill={style.headerText} />
       <TitleText text={contact} x={rightX} y={yContact} width={infoW} size={contactSize} family={fonts.body} weight={fonts.bodySemi} fill={style.headerText} />
       {mlSize ? <TitleText text={content.headlineMl} x={rightX} y={yMl} width={infoW} size={mlSize} family={fonts.ml} weight={fonts.mlBold} fill={style.headlineColor} /> : null}
+      </Editable>
 
+      <Editable ctx={ctx} k="title">
       <Circle
         x={cx}
         y={cy}
@@ -1361,6 +1604,7 @@ function CircleHeader({ ctx }: { ctx: Ctx }) {
           })()}
         </Group>
       ) : null}
+      </Editable>
       <Sticker ctx={ctx} cx={cx + r * 0.85} cy={cy - r * 0.85} size={r * 0.12} />
     </Group>
   );
@@ -1413,7 +1657,7 @@ function StackHeader({ ctx }: { ctx: Ctx }) {
   const depthColor = style.headline3d ? (luminanceDark(style.headerText) ? style.headerText : mix(style.headlineColor, "#000000", 0.55)) : undefined;
 
   return (
-    <Group listening={Boolean(ctx.onMoveBrand)}>
+    <Group listening={Boolean(ctx.onMoveBrand || ctx.edit)}>
       {heroOn ? <Hero ctx={ctx} x={pad * 0.8} y={topH + 4 * u} w={heroW} h={hh - topH - 4 * u} /> : null}
       <BrandGroup ctx={ctx} anchorX={pad} width={W * 0.65} hitY={14 * u} hitH={Math.max(logoH, topH * nameScale)}>
         {logo ? (
@@ -1451,6 +1695,7 @@ function StackHeader({ ctx }: { ctx: Ctx }) {
         </Group>
       ) : null}
       <Sticker ctx={ctx} cx={W - pad - 70 * u} cy={14 * u + topH / 2} size={topH * 0.45} />
+      <Editable ctx={ctx} k="title">
       <TitleText text={content.kicker} x={titleX} y={yK} width={titleW} size={kickerSize} family={fonts.body} weight={fonts.bodyBold} fill={style.headerText} />
       <TitleText text={content.headline} x={titleX} y={y1} width={titleW} size={h1} family={fonts.heading} weight={fonts.headingWeight} fill={style.headlineColor} depth={style.headline3d} depthColor={depthColor} />
       {ml ? (
@@ -1460,6 +1705,7 @@ function StackHeader({ ctx }: { ctx: Ctx }) {
         </Group>
       ) : null}
       <TitleText text={content.headline2} x={titleX} y={y2} width={titleW} size={h2} family={fonts.heading} weight={fonts.headingWeight} fill={style.headline3d ? style.headlineColor : style.headerText} depth={style.headline3d} depthColor={depthColor} />
+      </Editable>
     </Group>
   );
 }
@@ -1485,10 +1731,11 @@ function ScriptHeader({ ctx }: { ctx: Ctx }) {
   const mlSize = fit(content.headlineMl, fonts.ml, fonts.mlBold, titleW, hh * 0.1, 11 * u);
 
   return (
-    <Group listening={Boolean(ctx.onMoveBrand)}>
+    <Group listening={Boolean(ctx.onMoveBrand || ctx.edit)}>
       <BrandGroup ctx={ctx} anchorX={cx - r} width={r * 2} hitY={cy - r} hitH={r * 2}>
         <LogoBox ctx={ctx} x={cx - r} y={cy - r} w={r * 2} h={r * 2} bg={style.panelBg} color={style.panelText} radius={r} shape="circle" />
       </BrandGroup>
+      <Editable ctx={ctx} k="title">
       <InlineTitle
         parts={[
           { text: content.headline, color: style.headerText },
@@ -1505,6 +1752,7 @@ function ScriptHeader({ ctx }: { ctx: Ctx }) {
       />
       {barText ? <Tag ctx={ctx} text={barText} cx={titleX + titleW / 2} y={yBar} size={hh * 0.055} bg={style.stripBg} color={style.stripText} maxWidth={titleW} /> : null}
       <TitleText text={content.headlineMl} x={titleX} y={yBar + hh * 0.13} width={titleW} size={mlSize} family={fonts.ml} weight={fonts.mlBold} fill={style.headerText} />
+      </Editable>
       <Sticker ctx={ctx} cx={W - pad - 50 * u} cy={hh * 0.1} size={hh * 0.06} />
     </Group>
   );
@@ -1521,10 +1769,12 @@ function Strip({ ctx, box }: { ctx: Ctx; box: Box }) {
   const x = box.x + (box.w - textW) / 2;
   const bar = style.stripStyle === "bar";
   return (
+    <Editable ctx={ctx} k="strip">
     <Group listening={false}>
       <Rect x={x} y={box.y} width={textW} height={box.h} cornerRadius={bar ? 6 * geo.u : box.h / 2} fill={style.stripBg} opacity={bar ? 1 : 0.94} />
       <Text x={x} y={box.y} width={textW} height={box.h} align="center" verticalAlign="middle" text={text} fontFamily={family} fontStyle={fonts.bodySemi} fontSize={size} fill={style.stripText} wrap="none" ellipsis />
     </Group>
+    </Editable>
   );
 }
 
@@ -1575,6 +1825,7 @@ function ProductCard({
   selected,
   onSelect,
   onMove,
+  onResize,
 }: {
   ctx: Ctx;
   box: Box;
@@ -1584,6 +1835,8 @@ function ProductCard({
   selected: boolean;
   onSelect?: () => void;
   onMove?: (offsetX: number, offsetY: number) => void;
+  /** Called after the resize handles are released: scale factors + new top-left in design px. */
+  onResize?: (scaleX: number, scaleY: number, x: number, y: number) => void;
 }) {
   const { style, content, fonts, geo } = ctx;
   const { u } = geo;
@@ -1850,18 +2103,42 @@ function ProductCard({
 
   return (
     <Group
+      id={`item-${item.id}`}
+      name={ctx.edit ? "editable" : undefined}
       x={box.x}
       y={box.y}
+      onMouseDown={ctx.edit ? onSelect : undefined}
+      onTouchStart={ctx.edit ? onSelect : undefined}
       onClick={onSelect}
       onTap={onSelect}
       listening={Boolean(onSelect || onMove)}
       draggable={Boolean(onMove)}
+      onMouseEnter={(e) => {
+        if (!onMove) return;
+        const container = e.target.getStage()?.container();
+        if (container) container.style.cursor = "move";
+      }}
+      onMouseLeave={(e) => {
+        const container = e.target.getStage()?.container();
+        if (container) container.style.cursor = "default";
+      }}
       onDragEnd={(e) => {
         const ox = (e.target.x() - basePos.x) / u;
         const oy = (e.target.y() - basePos.y) / u;
         e.target.position({ x: box.x, y: box.y });
         onSelect?.();
         onMove?.(Math.round(ox), Math.round(oy));
+      }}
+      onTransformEnd={(e) => {
+        const node = e.target;
+        const sx = node.scaleX();
+        const sy = node.scaleY();
+        const nx = node.x();
+        const ny = node.y();
+        // The card re-lays out its contents for the new size, so drop the temporary stretch.
+        node.scale({ x: 1, y: 1 });
+        node.position({ x: box.x, y: box.y });
+        onResize?.(sx, sy, nx, ny);
       }}
     >
       {/* Hit area for free-standing products */}
@@ -2019,23 +2296,25 @@ function QrFooterBadge({ ctx, x, y, size }: { ctx: Ctx; x: number; y: number; si
   const inner = size - pad * 2;
   const cell = inner / n;
   return (
-    <Group x={x} y={y} listening={false}>
-      <Rect width={size} height={size} cornerRadius={size * 0.12} fill="#ffffff" shadowColor="#000" shadowBlur={8 * geo.u} shadowOpacity={0.22} />
-      <Shape
-        sceneFunc={(c, shape) => {
-          c.beginPath();
-          for (let r = 0; r < n; r++) {
-            for (let col = 0; col < n; col++) {
-              if (matrix[r][col]) {
-                c.rect(pad + col * cell, pad + r * cell, cell + 0.35, cell + 0.35);
+    <Editable ctx={ctx} k="qr">
+      <Group x={x} y={y} listening={false}>
+        <Rect width={size} height={size} cornerRadius={size * 0.12} fill="#ffffff" shadowColor="#000" shadowBlur={8 * geo.u} shadowOpacity={0.22} />
+        <Shape
+          sceneFunc={(c, shape) => {
+            c.beginPath();
+            for (let r = 0; r < n; r++) {
+              for (let col = 0; col < n; col++) {
+                if (matrix[r][col]) {
+                  c.rect(pad + col * cell, pad + r * cell, cell + 0.35, cell + 0.35);
+                }
               }
             }
-          }
-          c.fillStrokeShape(shape);
-        }}
-        fill="#111827"
-      />
-    </Group>
+            c.fillStrokeShape(shape);
+          }}
+          fill="#111827"
+        />
+      </Group>
+    </Editable>
   );
 }
 
@@ -2062,24 +2341,26 @@ function Footer({ ctx, box }: { ctx: Ctx; box: Box }) {
     const colW = (availW - pad * 2) / Math.max(1, items.length);
     const r = Math.min(rowH * 0.3, 30 * u);
     return (
-      <Group listening={false}>
-        <Rect x={box.x} y={box.y} width={box.w} height={box.h} fill={style.footerBg} />
-        {items.map((it, i) => {
-          const x = pad + colW * i;
-          const textX = x + r * 2 + 12 * u;
-          const textW = colW - r * 2 - 20 * u;
-          const valueSize = fit(it.value, fonts.body, fonts.bodyBold, textW, rowH * 0.27, 10 * u);
-          return (
-            <Group key={it.label}>
-              <IconCircle x={x + r} y={box.y + rowH / 2} r={r} icon={it.icon} bg={style.footerAccent} color={readableOn(style.footerAccent)} />
-              <Text x={textX} y={box.y + rowH / 2 - valueSize * 1.15} width={textW} text={it.label} fontFamily={fonts.body} fontStyle={fonts.bodySemi} fontSize={valueSize * 0.55} fill={style.footerText} opacity={0.85} wrap="none" />
-              <Text x={textX} y={box.y + rowH / 2 - valueSize * 0.4} width={textW} text={it.value} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={valueSize} fill={style.footerText} wrap="none" ellipsis />
-            </Group>
-          );
-        })}
-        {note ? (
-          <Text x={pad} y={box.y + rowH} width={availW - pad * 2} align="center" text={note} fontFamily={noteFamily} fontSize={noteSize} fill={style.footerText} opacity={0.85} wrap="none" ellipsis />
-        ) : null}
+      <Group listening={Boolean(ctx.edit)}>
+        <Rect listening={false} x={box.x} y={box.y} width={box.w} height={box.h} fill={style.footerBg} />
+        <Editable ctx={ctx} k="footer">
+          {items.map((it, i) => {
+            const x = pad + colW * i;
+            const textX = x + r * 2 + 12 * u;
+            const textW = colW - r * 2 - 20 * u;
+            const valueSize = fit(it.value, fonts.body, fonts.bodyBold, textW, rowH * 0.27, 10 * u);
+            return (
+              <Group key={it.label} listening={false}>
+                <IconCircle x={x + r} y={box.y + rowH / 2} r={r} icon={it.icon} bg={style.footerAccent} color={readableOn(style.footerAccent)} />
+                <Text x={textX} y={box.y + rowH / 2 - valueSize * 1.15} width={textW} text={it.label} fontFamily={fonts.body} fontStyle={fonts.bodySemi} fontSize={valueSize * 0.55} fill={style.footerText} opacity={0.85} wrap="none" />
+                <Text x={textX} y={box.y + rowH / 2 - valueSize * 0.4} width={textW} text={it.value} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={valueSize} fill={style.footerText} wrap="none" ellipsis />
+              </Group>
+            );
+          })}
+          {note ? (
+            <Text listening={false} x={pad} y={box.y + rowH} width={availW - pad * 2} align="center" text={note} fontFamily={noteFamily} fontSize={noteSize} fill={style.footerText} opacity={0.85} wrap="none" ellipsis />
+          ) : null}
+        </Editable>
         {content.showQr ? <QrFooterBadge ctx={ctx} x={box.w - pad * 0.6 - qrSize} y={box.y + (box.h - qrSize) / 2} size={qrSize} /> : null}
       </Group>
     );
@@ -2092,32 +2373,35 @@ function Footer({ ctx, box }: { ctx: Ctx; box: Box }) {
     const logo = content.showLogo && store.logoUrl ? getLoadedImage(store.logoUrl) : null;
     const noteSize = fit(note, noteFamily, fonts.bodyBold, (availW - stripX - pad * 1.2) * 1.9, box.h * 0.17, 9 * u);
     return (
-      <Group listening={false}>
-        <Rect x={box.x} y={box.y} width={box.w} height={box.h} fill={style.footerBg} />
-        {logo ? (
-          <ContainImage image={logo} x={pad} y={box.y + box.h * 0.1} w={stripX - pad * 2} h={box.h * 0.55} />
-        ) : (
-          <Text x={pad} y={box.y + box.h * 0.12} width={stripX - pad * 1.5} text={store.name} fontFamily={fonts.heading} fontStyle={fonts.headingWeight} fontSize={nameSize} fill={style.footerText} wrap="none" ellipsis />
-        )}
-        <Text x={pad} y={box.y + box.h * 0.7} width={stripX - pad * 1.5} text={contact} fontFamily={fonts.body} fontStyle={fonts.bodySemi} fontSize={contactSize} fill={style.footerText} wrap="none" ellipsis />
-        <Line closed points={[stripX + 40 * u, box.y + box.h * 0.22, box.w, box.y + box.h * 0.12, box.w, box.y + box.h, stripX, box.y + box.h]} fill={style.footerAccent} />
-        {note ? (
-          <Text
-            x={stripX + 50 * u}
-            y={box.y + box.h * 0.24}
-            width={availW - stripX - 50 * u - pad * 0.6}
-            height={box.h * 0.74}
-            align="center"
-            verticalAlign="middle"
-            text={note}
-            fontFamily={noteFamily}
-            fontStyle={fonts.bodyBold}
-            fontSize={noteSize}
-            lineHeight={1.25}
-            fill={readableOn(style.footerAccent)}
-            wrap="word"
-          />
-        ) : null}
+      <Group listening={Boolean(ctx.edit)}>
+        <Rect listening={false} x={box.x} y={box.y} width={box.w} height={box.h} fill={style.footerBg} />
+        <Line listening={false} closed points={[stripX + 40 * u, box.y + box.h * 0.22, box.w, box.y + box.h * 0.12, box.w, box.y + box.h, stripX, box.y + box.h]} fill={style.footerAccent} />
+        <Editable ctx={ctx} k="footer">
+          {logo ? (
+            <ContainImage image={logo} x={pad} y={box.y + box.h * 0.1} w={stripX - pad * 2} h={box.h * 0.55} />
+          ) : (
+            <Text listening={false} x={pad} y={box.y + box.h * 0.12} width={stripX - pad * 1.5} text={store.name} fontFamily={fonts.heading} fontStyle={fonts.headingWeight} fontSize={nameSize} fill={style.footerText} wrap="none" ellipsis />
+          )}
+          <Text listening={false} x={pad} y={box.y + box.h * 0.7} width={stripX - pad * 1.5} text={contact} fontFamily={fonts.body} fontStyle={fonts.bodySemi} fontSize={contactSize} fill={style.footerText} wrap="none" ellipsis />
+          {note ? (
+            <Text
+              listening={false}
+              x={stripX + 50 * u}
+              y={box.y + box.h * 0.24}
+              width={availW - stripX - 50 * u - pad * 0.6}
+              height={box.h * 0.74}
+              align="center"
+              verticalAlign="middle"
+              text={note}
+              fontFamily={noteFamily}
+              fontStyle={fonts.bodyBold}
+              fontSize={noteSize}
+              lineHeight={1.25}
+              fill={readableOn(style.footerAccent)}
+              wrap="word"
+            />
+          ) : null}
+        </Editable>
         {content.showQr ? <QrFooterBadge ctx={ctx} x={box.w - pad * 0.6 - qrSize} y={box.y + (box.h - qrSize) / 2} size={qrSize} /> : null}
       </Group>
     );
@@ -2136,25 +2420,28 @@ function Footer({ ctx, box }: { ctx: Ctx; box: Box }) {
   const blockH = (contact ? contactSize * 1.3 : 0) + (note ? noteSize * 1.3 : 0) + (lines.length > 1 ? 6 * u : 0);
   const startY = by + (bh - blockH) / 2;
   return (
-    <Group listening={false}>
-      <Rect x={bx} y={by} width={bw} height={bh} cornerRadius={banner ? bh * 0.3 : 0} fill={style.footerBg} />
-      {contact ? <Text x={bx + pad} y={startY} width={textAreaW - pad * 2} align="center" text={contact} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={contactSize} lineHeight={1.3} fill={style.footerText} wrap="none" ellipsis /> : null}
-      {note ? (
-        <Text
-          x={bx + pad}
-          y={startY + (contact ? contactSize * 1.3 + 6 * u : 0)}
-          width={textAreaW - pad * 2}
-          align="center"
-          text={note}
-          fontFamily={noteFamily}
-          fontSize={noteSize}
-          lineHeight={1.3}
-          fill={style.footerText}
-          opacity={0.88}
-          wrap="none"
-          ellipsis
-        />
-      ) : null}
+    <Group listening={Boolean(ctx.edit)}>
+      <Rect listening={false} x={bx} y={by} width={bw} height={bh} cornerRadius={banner ? bh * 0.3 : 0} fill={style.footerBg} />
+      <Editable ctx={ctx} k="footer">
+        {contact ? <Text listening={false} x={bx + pad} y={startY} width={textAreaW - pad * 2} align="center" text={contact} fontFamily={fonts.body} fontStyle={fonts.bodyBold} fontSize={contactSize} lineHeight={1.3} fill={style.footerText} wrap="none" ellipsis /> : null}
+        {note ? (
+          <Text
+            listening={false}
+            x={bx + pad}
+            y={startY + (contact ? contactSize * 1.3 + 6 * u : 0)}
+            width={textAreaW - pad * 2}
+            align="center"
+            text={note}
+            fontFamily={noteFamily}
+            fontSize={noteSize}
+            lineHeight={1.3}
+            fill={style.footerText}
+            opacity={0.88}
+            wrap="none"
+            ellipsis
+          />
+        ) : null}
+      </Editable>
       {content.showQr ? <QrFooterBadge ctx={ctx} x={bx + bw - pad * 0.5 - qrSize} y={by + (bh - qrSize) / 2} size={qrSize} /> : null}
     </Group>
   );

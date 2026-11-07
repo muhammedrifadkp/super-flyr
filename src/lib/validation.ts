@@ -168,6 +168,16 @@ export const posterContentSchema = z.object({
   showHero: z.boolean().default(true),
   showQr: z.boolean().default(false),
   showOnTv: z.boolean().default(false),
+  elementTransforms: z
+    .record(
+      z.string().max(24),
+      z.object({
+        x: z.number().min(-3000).max(3000),
+        y: z.number().min(-3000).max(3000),
+        scale: z.number().min(0.1).max(6),
+      }),
+    )
+    .default({}),
 });
 
 export const posterPatchSchema = z

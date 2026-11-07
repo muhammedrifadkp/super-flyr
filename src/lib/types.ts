@@ -232,6 +232,17 @@ export interface PosterContent {
   showQr?: boolean;
   /** Whether this poster is selected to play on the main Admin Smart TV display (/tv). */
   showOnTv?: boolean;
+  /**
+   * Free move / resize applied on the canvas to individual poster elements
+   * (title, hero, sticker, strip, offer box, QR, brand scale…). x / y are design units, scale is a multiplier.
+   */
+  elementTransforms?: Record<string, ElementTransform>;
+}
+
+export interface ElementTransform {
+  x: number;
+  y: number;
+  scale: number;
 }
 
 export interface Poster {
