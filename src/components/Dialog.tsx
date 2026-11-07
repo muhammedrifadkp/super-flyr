@@ -20,7 +20,7 @@ export function Dialog({
   description?: ReactNode;
   children: ReactNode;
   footer?: ReactNode;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "md" | "lg" | "xl";
 }) {
   const ref = useRef<HTMLDialogElement>(null);
 
@@ -50,6 +50,7 @@ export function Dialog({
         size === "sm" && "sm:max-w-sm",
         size === "md" && "sm:max-w-lg",
         size === "lg" && "sm:max-w-2xl",
+        size === "xl" && "sm:max-w-4xl",
       )}
     >
       {open ? (

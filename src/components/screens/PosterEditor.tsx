@@ -105,6 +105,10 @@ function EditorInner({
   const [tab, setTab] = useState<Tab>(readTabFromUrl);
   const [page, setPage] = useState(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedElement, setSelectedElement] = useState<string | null>(null);
+  const [selectSeq, setSelectSeq] = useState(0);
+  const [sidebarWidth, setSidebarWidth] = useState(400);
+  const [resizingSidebar, setResizingSidebar] = useState(false);
   const [saveState, setSaveState] = useState<SaveState>("saved");
   const [exportRequest, setExportRequest] = useState<ExportRequest | null>(null);
   const [dialog, setDialog] = useState<"export" | "share" | null>(null);
@@ -258,12 +262,51 @@ function EditorInner({
     (itemId: string | null) => {
       setSelectedId(itemId);
       if (itemId) {
-        setTab((current) => (current === "layout" ? "layout" : "products"));
+        setSelectedElement(null);
+        setTab("products");
+        setMobileFullPreview(false);
         const index = items.findIndex((i) => i.id === itemId);
         if (index >= 0) setPage(Math.floor(index / geo.perPage));
       }
     },
     [geo.perPage, items],
+  );
+
+  const selectElement = useCallback((elementKey: string | null) => {
+    setSelectedElement(elementKey);
+    if (elementKey) {
+      setSelectedId(null);
+      setSelectSeq((s) => s + 1);
+      setTab("text");
+      setMobileFullPreview(false);
+    }
+  }, []);
+
+  const startSidebarResize = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startWidth = sidebarWidth;
+      setResizingSidebar(true);
+
+      const onMove = (moveEvent: PointerEvent) => {
+        const maxAllowed = Math.max(360, Math.min(720, window.innerWidth - 360));
+        const nextWidth = Math.max(300, Math.min(maxAllowed, Math.round(startWidth + (moveEvent.clientX - startX))));
+        setSidebarWidth(nextWidth);
+      };
+
+      const onUp = () => {
+        setResizingSidebar(false);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onUp);
+        window.removeEventListener("pointercancel", onUp);
+      };
+
+      window.addEventListener("pointermove", onMove);
+      window.addEventListener("pointerup", onUp);
+      window.addEventListener("pointercancel", onUp);
+    },
+    [sidebarWidth],
   );
 
   const handleMoveBrand = useCallback(
@@ -430,8 +473,10 @@ function EditorInner({
       <div className="flex min-h-0 flex-1 flex-col-reverse md:flex-row">
         {/* Panel */}
         <aside
+          data-editor-sidebar="true"
+          style={{ "--sidebar-w": `${sidebarWidth}px` } as React.CSSProperties}
           className={cx(
-            "flex min-h-0 flex-col border-t border-gray-200 bg-white md:w-[380px] md:shrink-0 md:border-r md:border-t-0",
+            "relative flex min-h-0 flex-col border-t border-gray-200 bg-white md:w-[var(--sidebar-w)] md:shrink-0 md:border-r md:border-t-0",
             mobileFullPreview ? "shrink-0" : "flex-1 md:flex-initial",
           )}
         >
@@ -484,8 +529,28 @@ function EditorInner({
             ) : tab === "style" ? (
               <StylePanel poster={poster} store={store} items={items} update={update} />
             ) : (
-              <TextPanel poster={poster} update={update} />
+              <TextPanel poster={poster} update={update} selectedElement={selectedElement} selectSeq={selectSeq} />
             )}
+          </div>
+          {/* Desktop drag handle to resize sidebar width */}
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="Drag to resize sidebar width"
+            title="Drag to resize sidebar width (double-click to reset)"
+            onPointerDown={startSidebarResize}
+            onDoubleClick={() => setSidebarWidth(400)}
+            className={cx(
+              "group absolute inset-y-0 -right-1.5 z-30 hidden w-3 cursor-col-resize touch-none items-center justify-center md:flex",
+              resizingSidebar && "bg-brand-500/15",
+            )}
+          >
+            <span
+              className={cx(
+                "h-12 w-1 rounded-full transition-colors",
+                resizingSidebar ? "bg-brand-600" : "bg-gray-300/80 group-hover:bg-brand-500",
+              )}
+            />
           </div>
         </aside>
 
@@ -507,6 +572,7 @@ function EditorInner({
               page={currentPage}
               selectedId={selectedId}
               onSelectItem={selectItem}
+              onSelectElement={selectElement}
               onMoveBrand={handleMoveBrand}
               onMoveItem={handleMoveItem}
               onTransformItem={handleTransformItem}

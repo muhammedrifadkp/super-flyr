@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Package, Palette, Plus, RotateCcw, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Check, ChevronDown, GripVertical, Package, Palette, Plus, RotateCcw, Search, Sparkles, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { discountPercent, formatPrice, randomId } from "@/lib/format";
 import { resolveProductImageUrl } from "@/lib/keralaCatalogue";
@@ -19,17 +19,43 @@ import {
   type TemplateCategory,
 } from "@/lib/poster/templates";
 import { FittedPoster } from "./PosterPreview";
-import type { BadgeMode, BrandAlign, FontKey, FormatKey, Poster, PosterItem, PosterStyle, Product, ResolvedItem, Store } from "@/lib/types";
+import type { BadgeMode, BrandAlign, ElementTransform, FontKey, FormatKey, Poster, PosterItem, PosterStyle, Product, ResolvedItem, Store } from "@/lib/types";
+import { Dialog } from "../Dialog";
 import { ImageUploader, type PendingImage } from "../ImageUploader";
 import { Button, ColorInput, Field, IconButton, Input, Select, Switch, Textarea, cx } from "../ui";
 
 type Update = (patch: Partial<Poster>) => void;
 
-function Section({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
+function Section({
+  title,
+  children,
+  action,
+  sectionId,
+  highlighted,
+}: {
+  title: string;
+  children: ReactNode;
+  action?: ReactNode;
+  sectionId?: string;
+  highlighted?: boolean;
+}) {
   return (
-    <section className="space-y-3 border-b border-gray-100 px-4 py-4 last:border-b-0">
+    <section
+      data-editor-section={sectionId}
+      className={cx(
+        "space-y-3 border-b border-gray-100 px-4 py-4 transition-colors last:border-b-0",
+        highlighted && "bg-brand-50/40 ring-2 ring-inset ring-brand-500",
+      )}
+    >
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-gray-950">{title}</h3>
+        <div className="flex min-w-0 items-center gap-2">
+          <h3 className="truncate text-sm font-semibold text-gray-950">{title}</h3>
+          {highlighted ? (
+            <span className="shrink-0 rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
+              Selected
+            </span>
+          ) : null}
+        </div>
         {action}
       </div>
       {children}
@@ -92,6 +118,8 @@ export function ProductsPanel({
 }) {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
+  const [onlySelected, setOnlySelected] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const listRef = useRef<HTMLOListElement>(null);
   const itemsRef = useRef<PosterItem[]>(poster.items);
@@ -107,9 +135,12 @@ export function ProductsPanel({
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return products.filter(
-      (p) => (category === "All" || p.category === category) && (!q || p.name.toLowerCase().includes(q) || p.nameMl.includes(q)),
+      (p) =>
+        (category === "All" || p.category === category) &&
+        (!onlySelected || onPoster.has(p.id)) &&
+        (!q || p.name.toLowerCase().includes(q) || p.nameMl.includes(q) || p.category.toLowerCase().includes(q)),
     );
-  }, [products, query, category]);
+  }, [products, query, category, onlySelected, onPoster]);
 
   const setItems = (next: PosterItem[]) => update({ items: next });
 
@@ -208,6 +239,30 @@ export function ProductsPanel({
 
   return (
     <div>
+      {/* Top Action Card to Open Product Picker Modal */}
+      <div className="border-b border-gray-100 p-4">
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="group flex w-full items-center justify-between gap-3 rounded-xl bg-gradient-to-r from-brand-600 to-emerald-600 p-3.5 text-left text-white shadow-sm transition hover:from-brand-700 hover:to-emerald-700"
+        >
+          <div className="flex min-w-0 items-center gap-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white">
+              <Plus className="size-5" aria-hidden="true" />
+            </span>
+            <div className="min-w-0">
+              <span className="block text-sm font-bold">Add / Select Products</span>
+              <span className="block truncate text-xs text-emerald-100">
+                {items.length} on poster · {products.length} in library
+              </span>
+            </div>
+          </div>
+          <span className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-xs font-bold text-brand-700 shadow-xs transition group-hover:scale-105">
+            Browse
+          </span>
+        </button>
+      </div>
+
       <Section
         title={`On this poster (${items.length})`}
         action={
@@ -224,7 +279,16 @@ export function ProductsPanel({
         }
       >
         {items.length === 0 ? (
-          <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">No products yet. Add some from the list below.</p>
+          <div className="rounded-xl border border-dashed border-gray-300 bg-gray-50/70 p-5 text-center">
+            <Package className="mx-auto size-8 text-gray-400" aria-hidden="true" />
+            <p className="mt-2 text-sm font-medium text-gray-800">No products on this poster yet</p>
+            <p className="mt-0.5 text-xs text-gray-500">Click the button above to browse product cards and add them.</p>
+            <div className="mt-3">
+              <Button size="sm" variant="primary" icon={<Plus className="size-4" />} onClick={() => setPickerOpen(true)}>
+                Select Products
+              </Button>
+            </div>
+          </div>
         ) : (
           <ol ref={listRef} className="space-y-1.5">
             {items.map((item, index) => (
@@ -250,79 +314,168 @@ export function ProductsPanel({
         )}
       </Section>
 
-      <Section
-        title="Add products"
-        action={
-          missingCount > 0 ? (
-            <Button size="sm" variant="ghost" icon={<Plus className="size-4" />} onClick={addAll}>
-              Add all {missingCount}
+      {/* Popup Modal for Product Selection */}
+      <Dialog
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        size="xl"
+        title="Select Products for Poster"
+        description="Click any product card to add or remove it from your poster."
+        footer={
+          <div className="flex w-full items-center justify-between gap-3">
+            <div className="flex items-center gap-3 text-xs text-gray-600">
+              <span className="font-semibold text-gray-900">{items.length} selected</span>
+              <span>·</span>
+              <a href="/dashboard/products" className="font-medium text-brand-700 hover:underline">
+                Manage product library
+              </a>
+            </div>
+            <Button variant="primary" onClick={() => setPickerOpen(false)}>
+              Done ({items.length})
             </Button>
-          ) : null
+          </div>
         }
       >
         {products.length === 0 ? (
-          <p className="rounded-lg bg-gray-50 p-3 text-sm text-gray-600">
+          <div className="rounded-xl bg-gray-50 p-6 text-center text-sm text-gray-600">
             Your product library is empty.{" "}
-            <a href="/dashboard/products" className="font-medium text-brand-700 underline">
-              Add products
+            <a href="/dashboard/products" className="font-semibold text-brand-700 underline">
+              Add products to your library
             </a>{" "}
             first.
-          </p>
+          </div>
         ) : (
-          <>
-            <div className="flex gap-2">
-              <div className="relative min-w-0 flex-1">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
-                <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search…" aria-label="Search products" className="pl-9" />
+          <div className="space-y-4">
+            {/* Search & Quick Actions Bar */}
+            <div className="sticky -top-4 z-20 -mx-4 space-y-2.5 border-b border-gray-100 bg-white/95 px-4 pt-2 pb-3 backdrop-blur sm:-mx-5 sm:px-5">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative min-w-[200px] flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+                  <Input
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search by English, മലയാളം, or category…"
+                    aria-label="Search products"
+                    className="pl-9"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setOnlySelected((v) => !v)}
+                  className={cx(
+                    "inline-flex h-10 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold ring-1 transition-colors",
+                    onlySelected ? "bg-brand-600 text-white ring-brand-600" : "bg-white text-gray-700 ring-gray-200 hover:bg-gray-50",
+                  )}
+                >
+                  <Check className="size-3.5" aria-hidden="true" />
+                  Selected ({items.length})
+                </button>
+                {missingCount > 0 ? (
+                  <Button size="sm" variant="ghost" icon={<Plus className="size-4" />} onClick={addAll}>
+                    Add all {missingCount}
+                  </Button>
+                ) : null}
               </div>
-              <Select value={category} onChange={(e) => setCategory(e.target.value)} aria-label="Category" className="w-36">
-                <option value="All">All</option>
-                {categories.map((c) => (
-                  <option key={c}>{c}</option>
-                ))}
-              </Select>
-            </div>
-            <ul className="relative max-h-[26rem] space-y-1 overflow-y-auto overscroll-contain pr-1">
-              {filtered.map((product) => {
-                const added = onPoster.has(product.id);
-                return (
-                  <li key={product.id}>
+
+              {/* Category Filter Pills */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+                {["All", ...categories].map((c) => {
+                  const active = category === c;
+                  return (
                     <button
+                      key={c}
+                      type="button"
+                      onClick={() => setCategory(c)}
+                      className={cx(
+                        "shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition-colors",
+                        active ? "bg-gray-900 text-white" : "bg-gray-100 text-gray-700 hover:bg-gray-200",
+                      )}
+                    >
+                      {c}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Product Cards Grid */}
+            {filtered.length === 0 ? (
+              <div className="rounded-xl bg-gray-50 p-8 text-center text-sm text-gray-600">
+                No products match your search or filter.
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
+                {filtered.map((product) => {
+                  const added = onPoster.has(product.id);
+                  const imgUrl = resolveProductImageUrl(product);
+                  const discount = discountPercent(product.normalPrice, product.offerPrice);
+                  return (
+                    <button
+                      key={product.id}
                       type="button"
                       onClick={() => toggle(product)}
                       aria-pressed={added}
                       className={cx(
-                        "flex w-full items-center gap-3 rounded-lg p-2 text-left ring-1 transition-colors",
-                        added ? "bg-brand-50 ring-brand-200" : "bg-white ring-gray-200 hover:ring-gray-300",
+                        "group relative flex flex-col overflow-hidden rounded-xl p-2.5 text-left transition-all",
+                        added
+                          ? "bg-brand-50/70 shadow-sm ring-2 ring-brand-600"
+                          : "bg-white ring-1 ring-gray-200 hover:shadow-md hover:ring-gray-300",
                       )}
                     >
-                      <Thumb url={resolveProductImageUrl(product)} />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-gray-900">{product.name}</span>
-                        <span className="block truncate text-xs text-gray-600 tabular">
-                          {formatPrice(product.offerPrice)}
-                          {product.unit ? `/${product.unit}` : ""} · {product.category}
-                        </span>
-                      </span>
-                      <span
-                        className={cx(
-                          "flex size-8 shrink-0 items-center justify-center rounded-full",
-                          added ? "bg-brand-600 text-white" : "bg-gray-100 text-gray-700",
+                      {/* Top Badges */}
+                      <div className="relative mb-2 flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-lg bg-gray-50 p-2 ring-1 ring-gray-100">
+                        {imgUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={imgUrl} alt="" loading="lazy" className="max-h-full max-w-full object-contain transition-transform group-hover:scale-105" />
+                        ) : (
+                          <Package className="size-8 text-gray-300" aria-hidden="true" />
                         )}
-                        aria-hidden="true"
-                      >
-                        {added ? <Check className="size-4" /> : <Plus className="size-4" />}
-                      </span>
-                      <span className="sr-only">{added ? "Remove from poster" : "Add to poster"}</span>
+                        {discount > 0 ? (
+                          <span className="absolute left-1.5 top-1.5 rounded-full bg-red-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs">
+                            −{discount}%
+                          </span>
+                        ) : null}
+                        <span
+                          className={cx(
+                            "absolute right-1.5 top-1.5 flex size-7 items-center justify-center rounded-full shadow-xs transition-colors",
+                            added ? "bg-brand-600 text-white" : "bg-white/90 text-gray-700 ring-1 ring-gray-200 group-hover:bg-brand-50",
+                          )}
+                          aria-hidden="true"
+                        >
+                          {added ? <Check className="size-4" /> : <Plus className="size-4" />}
+                        </span>
+                      </div>
+
+                      {/* Product Info */}
+                      <span className="line-clamp-1 text-xs font-bold text-gray-900">{product.name}</span>
+                      {product.nameMl ? (
+                        <span lang="ml" className="font-ml line-clamp-1 text-[11px] font-medium text-gray-600">
+                          {product.nameMl}
+                        </span>
+                      ) : null}
+                      <span className="mt-0.5 text-[10px] font-medium text-gray-400">{product.category}</span>
+
+                      {/* Price Row */}
+                      <div className="mt-auto flex items-baseline justify-between gap-1 pt-2">
+                        {discount > 0 ? (
+                          <span className="text-[11px] text-gray-400 line-through tabular">{formatPrice(product.normalPrice)}</span>
+                        ) : (
+                          <span />
+                        )}
+                        <span className="text-sm font-extrabold text-brand-700 tabular">
+                          {formatPrice(product.offerPrice)}
+                          {product.unit ? <span className="text-[10px] font-medium text-gray-500">/{product.unit}</span> : null}
+                        </span>
+                      </div>
                     </button>
-                  </li>
-                );
-              })}
-              {filtered.length === 0 ? <li className="p-3 text-sm text-gray-600">No products match.</li> : null}
-            </ul>
-          </>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         )}
-      </Section>
+      </Dialog>
     </div>
   );
 }
@@ -634,7 +787,15 @@ function PosterItemRow({
 
 // ---------------- Brand (Store Logo & Name) Size & Position ----------------
 
-function BrandSizeAndPositionSection({ poster, update }: { poster: Poster; update: Update }) {
+function BrandSizeAndPositionSection({
+  poster,
+  update,
+  highlighted,
+}: {
+  poster: Poster;
+  update: Update;
+  highlighted?: boolean;
+}) {
   const { content } = poster;
   const set = (patch: Partial<Poster["content"]>) => update({ content: { ...content, ...patch } });
   const logoScale = content.logoScale ?? 1;
@@ -644,6 +805,7 @@ function BrandSizeAndPositionSection({ poster, update }: { poster: Poster; updat
   const brandOffsetY = content.brandOffsetY ?? 0;
   const storeNameOffsetX = content.storeNameOffsetX ?? 0;
   const storeNameOffsetY = content.storeNameOffsetY ?? 0;
+  const brandTransform = content.elementTransforms?.brand;
   const hasBrandCustom =
     logoScale !== 1 ||
     storeNameScale !== 1 ||
@@ -651,16 +813,21 @@ function BrandSizeAndPositionSection({ poster, update }: { poster: Poster; updat
     brandOffsetX !== 0 ||
     brandOffsetY !== 0 ||
     storeNameOffsetX !== 0 ||
-    storeNameOffsetY !== 0;
+    storeNameOffsetY !== 0 ||
+    Boolean(brandTransform && (brandTransform.x || brandTransform.y || (brandTransform.scale && brandTransform.scale !== 1)));
 
   return (
     <Section
       title="Store Logo & Shop Name (Size & Position)"
+      sectionId="brand"
+      highlighted={highlighted}
       action={
         hasBrandCustom ? (
           <button
             type="button"
-            onClick={() =>
+            onClick={() => {
+              const nextTransforms = { ...(content.elementTransforms ?? {}) };
+              delete nextTransforms.brand;
               set({
                 logoScale: 1,
                 storeNameScale: 1,
@@ -669,8 +836,9 @@ function BrandSizeAndPositionSection({ poster, update }: { poster: Poster; updat
                 brandOffsetY: 0,
                 storeNameOffsetX: 0,
                 storeNameOffsetY: 0,
-              })
-            }
+                elementTransforms: nextTransforms,
+              });
+            }}
             className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-brand-700 hover:bg-brand-50"
           >
             <RotateCcw className="size-3.5" />
@@ -1409,13 +1577,130 @@ function FontSelect({ label, value, options, onChange }: { label: string; value:
 
 // ---------------- Text ----------------
 
-export function TextPanel({ poster, update }: { poster: Poster; update: Update }) {
+function mapElementToSectionId(elementKey: string | null | undefined): string | null {
+  if (!elementKey) return null;
+  if (elementKey === "brand") return "brand";
+  if (elementKey === "title" || elementKey === "sticker") return "title";
+  if (elementKey === "offer") return "offer";
+  if (elementKey === "hero") return "hero";
+  if (elementKey === "date") return "date";
+  if (elementKey === "footer" || elementKey === "qr" || elementKey === "strip" || elementKey === "info") return "footer";
+  return null;
+}
+
+function ElementTransformControls({
+  elementKey,
+  label,
+  content,
+  set,
+}: {
+  elementKey: string;
+  label: string;
+  content: Poster["content"];
+  set: (patch: Partial<Poster["content"]>) => void;
+}) {
+  const tr = content.elementTransforms?.[elementKey];
+  const scale = tr?.scale ?? 1;
+  const x = tr?.x ?? 0;
+  const y = tr?.y ?? 0;
+  const hasCustom = scale !== 1 || x !== 0 || y !== 0;
+
+  const patchTransform = (patch: { x?: number; y?: number; scale?: number }) => {
+    const nextScale = patch.scale ?? scale;
+    const nextX = patch.x ?? x;
+    const nextY = patch.y ?? y;
+    set({
+      elementTransforms: {
+        ...(content.elementTransforms ?? {}),
+        [elementKey]: {
+          ...tr,
+          x: nextX,
+          y: nextY,
+          scale: nextScale,
+        },
+      },
+    });
+  };
+
+  const resetTransform = () => {
+    const next = { ...(content.elementTransforms ?? {}) };
+    delete next[elementKey];
+    set({ elementTransforms: next });
+  };
+
+  return (
+    <div className="space-y-2.5 rounded-xl border border-brand-200 bg-brand-50/40 p-3">
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-brand-800">{label} Size &amp; Position</span>
+        {hasCustom ? (
+          <button
+            type="button"
+            onClick={resetTransform}
+            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium text-brand-700 hover:bg-brand-100"
+          >
+            <RotateCcw className="size-3" />
+            Reset
+          </button>
+        ) : null}
+      </div>
+      <Slider
+        label="Size"
+        min={0.35}
+        max={2.4}
+        step={0.05}
+        value={scale}
+        display={`${Math.round(scale * 100)}%`}
+        onChange={(v) => patchTransform({ scale: v })}
+      />
+      <div className="grid grid-cols-2 gap-2.5">
+        <Slider
+          label="Move X"
+          min={-500}
+          max={500}
+          step={5}
+          value={x}
+          display={`${x}px`}
+          onChange={(v) => patchTransform({ x: v })}
+        />
+        <Slider
+          label="Move Y"
+          min={-500}
+          max={500}
+          step={5}
+          value={y}
+          display={`${y}px`}
+          onChange={(v) => patchTransform({ y: v })}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function TextPanel({
+  poster,
+  update,
+  selectedElement,
+  selectSeq,
+}: {
+  poster: Poster;
+  update: Update;
+  selectedElement?: string | null;
+  selectSeq?: number;
+}) {
   const { content } = poster;
   const set = (patch: Partial<Poster["content"]>) => update({ content: { ...content, ...patch } });
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [heroKey, setHeroKey] = useState(0);
+  const panelRef = useRef<HTMLDivElement | null>(null);
   const activeHeroUrl = resolveHeroImageUrl(content, poster.templateId);
+  const activeSectionId = mapElementToSectionId(selectedElement);
+
+  useEffect(() => {
+    if (!activeSectionId || !panelRef.current) return;
+    const node = panelRef.current.querySelector<HTMLElement>(`[data-editor-section="${activeSectionId}"]`);
+    node?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [activeSectionId, selectSeq]);
 
   async function uploadHero(image: PendingImage | null | "remove") {
     if (image === null) return;
@@ -1437,9 +1722,9 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
   }
 
   return (
-    <div>
-      <BrandSizeAndPositionSection poster={poster} update={update} />
-      <Section title="Headline">
+    <div ref={panelRef}>
+      <BrandSizeAndPositionSection poster={poster} update={update} highlighted={activeSectionId === "brand"} />
+      <Section title="Headline" sectionId="title" highlighted={activeSectionId === "title"}>
         <Field label="Small line above" hint="e.g. Weekend, Today only">
           {(p) => <Input {...p} value={content.kicker} onChange={(e) => set({ kicker: e.target.value })} placeholder="e.g. Weekend…" maxLength={40} />}
         </Field>
@@ -1468,9 +1753,15 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
         <Field label="Sticker text" hint="Small tilted label. Leave empty to hide.">
           {(p) => <Input {...p} value={content.badgeText} onChange={(e) => set({ badgeText: e.target.value })} placeholder="e.g. TODAY ONLY…" maxLength={24} />}
         </Field>
+        <ElementTransformControls
+          elementKey={selectedElement === "sticker" ? "sticker" : "title"}
+          label={selectedElement === "sticker" ? "Sticker" : "Headline"}
+          content={content}
+          set={set}
+        />
       </Section>
 
-      <Section title="Offer box">
+      <Section title="Offer box" sectionId="offer" highlighted={activeSectionId === "offer"}>
         <p className="text-xs text-gray-600">Shown in the “Split block” header. Leave the value empty to hide it.</p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Label">
@@ -1480,9 +1771,10 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
             {(p) => <Input {...p} value={content.offerValue} onChange={(e) => set({ offerValue: e.target.value })} placeholder="e.g. 70%…" maxLength={12} />}
           </Field>
         </div>
+        <ElementTransformControls elementKey="offer" label="Offer Box" content={content} set={set} />
       </Section>
 
-      <Section title="Header studio artwork">
+      <Section title="Header studio artwork" sectionId="hero" highlighted={activeSectionId === "hero"}>
         <Switch checked={content.showHero} onChange={(showHero) => set({ showHero })} label="Show header artwork" description="High-res studio cutout in circle, stacked and split headers" />
         <div className="grid grid-cols-2 gap-2" role="group" aria-label="Studio header artworks">
           {HERO_PRESETS.map((preset) => {
@@ -1510,9 +1802,10 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
         <ImageUploader key={heroKey} label="Or upload your own custom PNG / store photo…" currentUrl={content.heroImageUrl} onChange={uploadHero} />
         {uploading ? <p className="text-xs text-gray-600" aria-live="polite">Uploading…</p> : null}
         {uploadError ? <p className="text-xs text-red-600" aria-live="polite">{uploadError}</p> : null}
+        <ElementTransformControls elementKey="hero" label="Header Artwork" content={content} set={set} />
       </Section>
 
-      <Section title="Offer dates">
+      <Section title="Offer dates" sectionId="date" highlighted={activeSectionId === "date"}>
         <div className="grid grid-cols-2 gap-3">
           <Field label="From">
             {(p) => <Input {...p} type="date" value={content.validFrom} onChange={(e) => set({ validFrom: e.target.value })} />}
@@ -1522,6 +1815,7 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
           </Field>
         </div>
         <Switch checked={content.showValidity} onChange={(showValidity) => set({ showValidity })} label="Show dates on poster" />
+        <ElementTransformControls elementKey="date" label="Date Pill" content={content} set={set} />
       </Section>
 
       <Section title="Product names">
@@ -1551,7 +1845,7 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
         <p className="text-xs text-gray-500">Products without a Malayalam name show the English name.</p>
       </Section>
 
-      <Section title="Footer & Highlights">
+      <Section title="Footer & Highlights" sectionId="footer" highlighted={activeSectionId === "footer"}>
         <Field label="Delivery / Highlight stamp" hint="Shown in the date strip under the header">
           {(p) => <Input {...p} value={content.deliveryBadge ?? ""} onChange={(e) => set({ deliveryBadge: e.target.value })} placeholder="e.g. 🛵 Free Home Delivery…" maxLength={40} />}
         </Field>
@@ -1588,6 +1882,24 @@ export function TextPanel({ poster, update }: { poster: Poster; update: Update }
           onChange={(showQr) => set({ showQr })}
           label="Show QR code on poster"
           description="Customers scan to open offers & order on WhatsApp"
+        />
+        <ElementTransformControls
+          elementKey={
+            selectedElement === "qr" || selectedElement === "strip" || selectedElement === "info"
+              ? selectedElement
+              : "footer"
+          }
+          label={
+            selectedElement === "qr"
+              ? "QR Code"
+              : selectedElement === "strip"
+                ? "Highlight Strip"
+                : selectedElement === "info"
+                  ? "Header Phone"
+                  : "Footer"
+          }
+          content={content}
+          set={set}
         />
       </Section>
 

@@ -27,6 +27,7 @@ export interface PosterCanvasProps {
   displayWidth: number;
   selectedId?: string | null;
   onSelectItem?: (id: string | null) => void;
+  onSelectElement?: (key: string | null) => void;
   onMoveBrand?: (offsetX: number, offsetY: number) => void;
   onMoveItem?: (id: string, offsetX: number, offsetY: number) => void;
   /** Mouse resize of a product card (drag the card's handles). */
@@ -123,6 +124,7 @@ export default function PosterCanvas({
   displayWidth,
   selectedId,
   onSelectItem,
+  onSelectElement,
   onMoveBrand,
   onMoveItem,
   onTransformItem,
@@ -208,14 +210,16 @@ export default function PosterCanvas({
       const target = e.target as HTMLElement | null;
       if (stageContainer && target && stageContainer.contains(target)) return;
       setActiveNode(null);
-      if (!target?.closest?.("[data-poster-item-id]")) {
+      if (!target?.closest?.("[data-editor-sidebar]")) {
         onSelectItem?.(null);
+        onSelectElement?.(null);
       }
     };
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setActiveNode(null);
         onSelectItem?.(null);
+        onSelectElement?.(null);
       }
     };
     document.addEventListener("pointerdown", onPointerDown);
@@ -224,7 +228,7 @@ export default function PosterCanvas({
       document.removeEventListener("pointerdown", onPointerDown);
       document.removeEventListener("keydown", onKeyDown);
     };
-  }, [editing, onSelectItem]);
+  }, [editing, onSelectItem, onSelectElement]);
 
   const ctx: Ctx = {
     geo,
@@ -238,7 +242,13 @@ export default function PosterCanvas({
     onMoveBrand,
     edit: editing
       ? {
-          select: setActiveNode,
+          select: (nodeId) => {
+            setActiveNode(nodeId);
+            if (nodeId.startsWith("el-")) {
+              onSelectItem?.(null);
+              onSelectElement?.(nodeId.slice(3));
+            }
+          },
           commit: (key, t) =>
             onTransformElement?.(key, {
               x: round(clampNum(t.x, -3000, 3000), 0.5),
@@ -284,6 +294,7 @@ export default function PosterCanvas({
         if (!target.findAncestor(".editable", true)) {
           setActiveNode(null);
           onSelectItem?.(null);
+          onSelectElement?.(null);
         }
       }}
       onTouchStart={(e) => {
@@ -293,6 +304,7 @@ export default function PosterCanvas({
         if (!target.findAncestor(".editable", true)) {
           setActiveNode(null);
           onSelectItem?.(null);
+          onSelectElement?.(null);
         }
       }}
     >
@@ -325,6 +337,7 @@ export default function PosterCanvas({
                 onSelectItem || editing
                   ? () => {
                       setActiveNode(`item-${item.id}`);
+                      onSelectElement?.(null);
                       onSelectItem?.(item.id);
                     }
                   : undefined
